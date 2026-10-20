@@ -1,7 +1,7 @@
 """Assemble index.html from src/page-head.html + src/page-body.html.
 
 Inlines every stamp icon, the icon of each stamp's required material and the
-25 coin icons as data URIs, taken from IdleonToolbox's public/data folder.
+30 coin icons as data URIs, taken from IdleonToolbox's public/data folder.
 No save data is embedded: the page starts empty and the user imports their own.
 
 Usage: python3 scripts/build_page.py <IdleonToolbox dir> <repo root>
@@ -34,7 +34,7 @@ def walk(node):
 
 
 walk(stamps)
-names.update(f'Coins{i}' for i in range(1, 26))
+names.update(f'Coins{i}' for i in range(1, 31))
 names.update(['Particle', 'GildedStamp', 'MeritBon14'])  # atom and Gilded Stamp icons for the reduction buttons
 
 images = {}

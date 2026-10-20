@@ -181,17 +181,19 @@
     return `<td class="num farm">${rateInput(r)}<span class="sub">next tier</span>${next}${toMax ? `<span class="sub">to max (${fmt(maxNeed)})</span>${toMax}` : ''}</td>`;
   };
   const money = () => (D.meta && D.meta.money) || 0;
-  // Same split as IdleonToolbox getCoinsArray: 100 of each coin make the next, coin 25 is the top one.
+  // Same split as IdleonToolbox getCoinsArray: 100 of each coin make the next, coin 30 is the top one
+  // (coins 26 to 30 came with game version 2.3.540).
+  const TOP_COIN = 30;
   const coinsArray = (v) => {
     if (!isFinite(v) || v < 1) return [[1, 0]];
     let n = BigInt(Math.floor(v)).toString();
     const out = [];
     let i = 1;
-    while (n.length > 0 && i < 25) {
+    while (n.length > 0 && i < TOP_COIN) {
       if (n.length < 2) { out.push([i, Number(n)]); n = ''; break; }
       out.push([i, Number(n.slice(-2))]); n = n.slice(0, -2); i++;
     }
-    if (n.length > 0) out.push([25, Number(n)]);
+    if (n.length > 0) out.push([TOP_COIN, Number(n)]);
     return out.reverse();
   };
   const coinsHtml = (v, max = 2) => {
