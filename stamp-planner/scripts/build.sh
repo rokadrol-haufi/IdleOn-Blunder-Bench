@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TOOLBOX_COMMIT="${1:-9cf5771bbb0f583368f25d70f286b88c6dcdf4cf}"
+TOOLBOX_COMMIT="${1:-0979e7a97d4522608f0d86569f18231035866d53}"
 WORK="$ROOT/.build"
 TB="$WORK/IdleonToolbox"
 

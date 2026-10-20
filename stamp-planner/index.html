@@ -281,7 +281,7 @@ td.farm .sub{margin-top:4px}
 
 <section class="notes" aria-label="How this is calculated">
   <h2 style="font-size:16px;color:var(--ink)">How this is calculated</h2>
-  <p>Material cost for the next tier = base cost × growth<sup>(tier − 1)<sup>0.8</sup></sup>, then × 0.05 with a Gilded Stamp, × (1 − Hydrogen%) and your vial and sigil discounts. Per-slot carry capacity is capped at 2.05B, and a character can hold the material across all inventory slots. "Max carry" is the best of your characters for that material type.</p>
+  <p>Material cost for the next tier = base cost × growth<sup>(tier − 1)<sup>0.8</sup></sup>, then × 0.05 with a Gilded Stamp, × (1 − Hydrogen%) and your vial and sigil discounts. Per-slot carry capacity is capped at 2.05B for materials; quest items, upgrade stones, time candy and other "d" items stack to 999,999,999 per slot since game version 2.3.540 (before: 9,999,999). A character can hold the material across all inventory slots. "Max carry" is the best of your characters for that material type.</p>
   <p>"Tiers in reach" counts how many more material upgrades fit, holding your current capacity fixed. In the carry capacity table it uses Gilded + 90%; in the planner it follows the reduction you picked. Gear stamps (bags, tools, armor) count items, and each takes a whole slot.</p>
   <p>"Coins to next tier" is the coin cost of the levels between now and the next material upgrade: up to your current max level, or, if you're already at max, the levels the next material upgrade unlocks. "Coins to out of reach" adds up every coin level up to the last tier you can still carry; red means it is more than you have.</p>
   <p>"In storage" is what sits in your storage chest. Many materials are at 1.05B, while upgrades here often need tens of billions, so storage is a second wall on top of carry capacity.</p>
@@ -616,7 +616,7 @@ td.farm .sub{margin-top:4px}
     document.head.appendChild(s);
   });
   // The save comes from the shared Account page (assets/site.js); the result is cached per save.
-  const CACHE_VERSION = 'stamps-v3';
+  const CACHE_VERSION = 'stamps-v4';
   let loadSeq = 0;
   let loading = !!window.IdleonTools;
   async function loadFromAccount(){
