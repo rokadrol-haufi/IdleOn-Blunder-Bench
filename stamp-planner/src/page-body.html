@@ -350,9 +350,9 @@
     const reach = rows.filter(r => r.fill <= 1);
     const ownedOk = reach.filter(r => r.q || r.o >= r.cost);
     if (q) rows = rows.filter(r => (r.n + ' ' + r.i).toLowerCase().includes(q));
-    // Priorities always show at the top, even when the reach / storage filters would hide them.
+    // Priorities stay at the top, even when the storage / exalted filters would hide them; "Hide out of reach" hides them too.
     const cmp = (a,b) => { const x = a[sortK], y = b[sortK]; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * sortDir; };
-    const pri = rows.filter(r => PRI.has(r.r)).sort(cmp);
+    const pri = rows.filter(r => PRI.has(r.r) && !($('fReach').checked && r.fill > 1)).sort(cmp);
     let rest = rows.filter(r => !PRI.has(r.r));
     if ($('fReach').checked) rest = rest.filter(r => r.fill <= 1);
     if ($('fOwned').checked) rest = rest.filter(r => r.q || r.o >= r.cost);
