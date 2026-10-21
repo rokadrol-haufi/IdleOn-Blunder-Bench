@@ -81,8 +81,9 @@ const STONES = {
   armor: { raw: 'StoneA8', Weapon_Power: 2, main: 15, misc: 1, Defence: 20 },
   tool: { raw: 'StoneT8', Weapon_Power: 12, main: 15, misc: 2, Defence: 0 },
 };
-// Relic Chains roll "% Drop Chance". IdleonToolbox does not read that stat anywhere, so it is counted as drop rate here.
-const dropChance = (it) => (it && it.Type === 'KEYCHAIN' && (it.UQ1txt === '%_DROP_CHANCE' || it.UQ2txt === '%_DROP_CHANCE')
+// "% Drop Chance" (gem shop Relic Chains) is the game's drop rate. IdleonToolbox does not read that stat name,
+// so it is counted as drop rate here.
+const dropChance = (it) => (it && (it.UQ1txt === '%_DROP_CHANCE' || it.UQ2txt === '%_DROP_CHANCE')
   ? { ...it, UQ1txt: it.UQ1txt === '%_DROP_CHANCE' ? '%_DROP_RATE' : it.UQ1txt, UQ2txt: it.UQ2txt === '%_DROP_CHANCE' ? '%_DROP_RATE' : it.UQ2txt } : it);
 const keychainVal = (v) => (typeof v === 'string' && v.includes(',') ? Math.max(...v.split(',').map(Number).filter(Number.isFinite)) : num(v));
 export const stonedItem = (raw, fam) => {
