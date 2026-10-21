@@ -359,7 +359,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
 
   // The save comes from the shared Account page (assets/site.js). The analysis takes ~10 s, so it is cached per save.
   const CACHE_VERSION = 'v8-' + BENCH.createdAt;
-  const ACT_CACHE = 'act-v7';
+  const ACT_CACHE = 'act-v8';
   const loadActCache = async () => {
     try { const c = await window.IdleonTools.cache.get('companion-activities', saveId, ACT_CACHE); if (c) for (const [k, v] of Object.entries(c)) actResults.set(k, v); } catch (e) {}
   };
@@ -1377,6 +1377,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
     if (!x) return '<span class="muted">empty</span>';
     const extra = [];
     if (x.effect) extra.push(pretty(String(x.effect).replace(/^\+?\{(%|px)?_?/, '').replace(/\{/g, '')) + (/^\+?\{%/.test(x.effect) ? ' %' : ''));
+    if (x.roll) extra.push(x.roll);
     if (x.stars != null) extra.push(`${x.stars}★`);
     if (x.amount != null) extra.push(fmt(x.amount));
     if (x.level != null) extra.push('lv ' + fmt(x.level));
@@ -1397,7 +1398,8 @@ const ACT_ICONS = /*__ACTICONS__*/;
     const unit = meta.unit === 'x' ? '×' : '';
     const body = cats.map((g) => {
       const ch = g.rows.filter((x) => x.changed);
-      const shown = showSame ? g.rows.filter((x) => x.relevant) : ch;
+      // Keychains always show, so the roll to look for is visible.
+      const shown = showSame ? g.rows.filter((x) => x.relevant) : g.rows.filter((x) => x.changed || (x.slot === 'Keychain' && x.relevant));
       if (!shown.length && !ch.length) return '';
       const head = `<tr class="section"><td colspan="6">${esc(g.cat)} <span class="src-ctx">${ch.length ? `${ch.length} change${ch.length > 1 ? 's' : ''}` : 'keep as is'}</span></td></tr>`;
       return head + shown.map((x) => `<tr class="${x.changed ? '' : 'same'}"><td>${esc(x.slot)}${x.boosted ? '<span class="sub">doubled by Omega chip</span>' : ''}</td><td class="it">${itemCell(x.from)}</td><td class="it to">${x.changed ? (x.to ? itemCell(x.to) : '<span class="muted">leave empty</span>') : '<span class="muted">same</span>'}</td><td>${x.changed ? esc(whereText(x.where)) : ''}</td><td class="num">${x.changed && x.worth ? fmtX(x.worth) : ''}</td><td class="it">${x.bis ? itemCell(x.bis, { stones: true }) : ''}</td></tr>`).join('');

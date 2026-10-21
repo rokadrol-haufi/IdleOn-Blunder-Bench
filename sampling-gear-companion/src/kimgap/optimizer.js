@@ -625,7 +625,16 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   const relB = await relevance(best, bestV), relS = await relevance(bis, bisV), relI = await relevance(init, base);
 
   /* Report ------------------------------------------------------------------------------------------ */
-  const itemView = (it) => (real(it) ? { raw: it.rawName, name: it.displayName || it.name || it.rawName, stones: it.stones || null } : null);
+  // Keychains roll their stats, so the roll is part of what to look for.
+  const keyRoll = (it) => {
+    if (it?.Type !== 'KEYCHAIN') return null;
+    const l = [1, 2].map((k) => [it['UQ' + k + 'txt'], num(it['UQ' + k + 'val'])]).filter(([tx, v]) => tx && tx !== '0' && v);
+    if (!l.length) return null;
+    const nm = (tx) => String(tx).replace(/^%?_/, '').replace(/_/g, ' ').toLowerCase().replace(/(^|\s)\S/g, (m) => m.toUpperCase()).replace(/\bAfk\b/g, 'AFK');
+    const pc = (tx) => (String(tx).startsWith('%') ? '%' : '');
+    return l.length === 2 && l[0][0] === l[1][0] ? `${l[0][1]}${pc(l[0][0])} / ${l[1][1]}${pc(l[0][0])} ${nm(l[0][0])}` : l.map(([tx, v]) => `${v}${pc(tx)} ${nm(tx)}`).join(' · ');
+  };
+  const itemView = (it) => (real(it) ? { raw: it.rawName, name: it.displayName || it.name || it.rawName, stones: it.stones || null, roll: keyRoll(it) } : null);
   const rows = [];
   const push = (cat, slot, from, to, extra = {}) => rows.push({ cat, slot, from, to, worth: worth[extra.k] ?? null, ...extra });
   EQUIP_SLOTS.forEach(([label], i) => { if (i < best.equip.length && !skipEquip(i)) push('Equipment', label, itemView(init.equip[i]?.item), itemView(best.equip[i]?.item), { k: 'equip' + i, where: best.equip[i]?.where ?? null, bis: itemView(bis.equip[i]?.item) }); });
@@ -641,7 +650,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   best.obols.forEach((e, i) => push('Obols', `${myObols[i]?.item?.shape || ''} obol`, itemView(init.obols[i]?.item), itemView(e?.item), { k: 'obols' + i, where: e?.where ?? null, bis: itemView(bis.obols[i]?.item) }));
   const foodView = (f) => (f ? { raw: f.raw, name: ITEMS?.[f.raw]?.displayName || f.raw, amount: f.amount } : null);
   best.food.forEach((f, i) => push('Food', `Food ${i + 1}`, foodView(init.food[i]), foodView(f), { k: 'food' + i, where: f ? foodWhere[f.raw] || null : null, bis: foodView(bis.food[i]) }));
-  for (const r of rows) r.changed = JSON.stringify([r.from?.raw, r.from?.amount, r.fromName]) !== JSON.stringify([r.to?.raw, r.to?.amount, r.fromName === undefined ? undefined : r.to?.name]) && !(r.cat === 'Star signs' && r.fromName === r.to?.name);
+  for (const r of rows) r.changed = JSON.stringify([r.from?.raw, r.from?.amount, r.from?.roll, r.fromName]) !== JSON.stringify([r.to?.raw, r.to?.amount, r.to?.roll, r.fromName === undefined ? undefined : r.to?.name]) && !(r.cat === 'Star signs' && r.fromName === r.to?.name);
   for (const r of rows) if (r.cat === 'Star signs') { r.from = r.fromName ? { name: r.fromName } : null; r.changed = (r.fromName ?? null) !== (r.to?.name ?? null); }
   // Only what does something for this activity: the recommended thing counts, or what is there now does.
   for (const r of rows) r.relevant = r.changed || !!relB[r.k] || !!relI[r.k];
@@ -717,7 +726,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
         const fromShelf = galleryRaw[16].indexOf(n);
         const where = fromShelf < 0 ? (trophyOutside.find((o) => o.n === n)?.where || null) : fromShelf < 48 ? 'Gallery shelf' : `Gallery podium ${fromShelf - 47} (level ${podiumLevel(fromShelf)})`;
         const owns = fromShelf >= 0 || trophyOutside.some((o) => o.n === n);
-        return { ...cell(raw, itemTip(it, `Trophy · level ${podiumLevel(48 + k)} podium`), was >= 1 ? pretty(ITEMS?.['Trophy' + was]?.displayName) : null, isBis && !owns ? null : where, was === n, [isBis && !owns ? 'You do not own this trophy' : null, 'Changes the gallery for every character'].filter(Boolean)), tier: podiumLevel(48 + k) };
+        return { ...cell(raw, itemTip(it, `Trophy · level ${podiumLevel(48 + k)} podium`), was >= 1 ? pretty(ITEMS?.['Trophy' + was]?.displayName) : null, isBis && !owns ? null : where, fromShelf >= 48 && podiumLevel(fromShelf) === podiumLevel(48 + k), [isBis && !owns ? 'You do not own this trophy' : null, 'Changes the gallery for every character'].filter(Boolean)), tier: podiumLevel(48 + k) };
       }) });
     }
     // Only what does something for this activity.
