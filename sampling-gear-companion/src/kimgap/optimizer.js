@@ -30,7 +30,13 @@ export const parseSave = (raw) => {
   const save = typeof raw === 'string' ? JSON.parse(raw) : raw;
   const data = save.data ?? save;
   const parsed = parseData(data, save.charNames ?? [], save.companion ?? null, save.guildData ?? null, save.serverVars, save.accountCreateTime ? 1e3 * save.accountCreateTime : undefined, save.tournament, {});
-  return { account: parsed.account ?? parsed.accountData, characters: parsed.characters ?? parsed.charactersData };
+  // Prayer slots the account has: the most any character has filled (the save keeps 12 places, -1 when empty).
+  let prayerSlots = 0;
+  for (let i = 0; i < (save.charNames || []).length; i++) {
+    let arr = data?.['Prayers_' + i]; try { if (typeof arr === 'string') arr = JSON.parse(arr); } catch (e) { arr = null; }
+    if (Array.isArray(arr)) arr.forEach((x, k) => { if (x !== -1 && x != null) prayerSlots = Math.max(prayerSlots, k + 1); });
+  }
+  return { account: parsed.account ?? parsed.accountData, characters: parsed.characters ?? parsed.charactersData, prayerSlots };
 };
 
 /* Item rules ------------------------------------------------------------------------------------ */
@@ -258,7 +264,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     food: (c.food || []).slice(0, Math.max(foodSlots, (c.food || []).filter(real).length)).map((f) => (real(f) ? { raw: f.rawName, amount: num(f.amount) } : null)),
     cards: Array.from({ length: 8 }, (_, i) => c.cards?.equippedCards?.[i]).map((x) => (x?.cardIndex ? cardPool.find((p) => p.cardIndex === x.cardIndex) || x : null)),
     cardSet: c.cards?.cardSet || null,
-    prayers: (c.activePrayers || []).slice(),
+    prayers: Array.from({ length: Math.max(P.prayerSlots || 0, (c.activePrayers || []).length) }, (_, k) => (c.activePrayers || [])[k] || null),
     chips: myChips.slice(),
     signs: (c.starSigns || []).slice(),
     obols: myObols.slice(),
@@ -515,6 +521,32 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
       const v2 = await value(nx2);
       if (same(v2, bestV)) { best = nx2; bestV = v2; }
     }
+  }
+  // Prayers: keep what is there, take out only what hurts, and put new prayers into free or freed slots first,
+  // so a prayer is only replaced when there is no room.
+  {
+    const want = best.prayers.filter(Boolean);
+    const wantN = new Set(want.map((p) => p.name));
+    const out = init.prayers.map((p) => (p && wantN.has(p.name) ? p : p));
+    // Prayers the best setup drops: drop them only if that matters.
+    for (let i = 0; i < out.length; i++) {
+      if (!out[i] || wantN.has(out[i].name)) continue;
+      const nx = clone(best); nx.prayers = out.slice(); nx.prayers[i] = null;
+      const keep = clone(best); keep.prayers = out.slice();
+      const [a, b] = [await value(nx), await value(keep)];
+      if (a > b * (1 + 1e-9)) out[i] = null;
+    }
+    const have = new Set(out.filter(Boolean).map((p) => p.name));
+    const add = want.filter((p) => !have.has(p.name));
+    for (const p of add) {
+      let k = out.findIndex((x, i) => !x && init.prayers[i]); // a slot freed above
+      if (k < 0) k = out.findIndex((x) => !x); // an empty slot
+      if (k < 0) k = out.findIndex((x) => x && !wantN.has(x.name)); // replace one that does nothing here
+      if (k >= 0) out[k] = p;
+    }
+    const nx = clone(best); nx.prayers = out;
+    const v = await value(nx);
+    if (v >= bestV * (1 - 1e-9)) { best = nx; bestV = Math.max(bestV, v); }
   }
   const cardPresetInfo = usePreset ? { current: curPreset, use: usePreset.i, exact: !!exact, overlap: usePreset.overlap, presets: presets.length } : null;
   const worth = {};
