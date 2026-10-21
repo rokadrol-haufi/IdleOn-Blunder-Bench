@@ -171,7 +171,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   (A?.storage?.list || []).forEach((it, i) => addEquip(it, where.storage, 'st' + i));
   for (const ch of C) {
     (ch.inventory || []).forEach((it, i) => addEquip(it, ch === c ? 'Your inventory' : `${ch.name}'s inventory`, `inv${ch.playerId}-${i}`));
-    if (ch === c) continue;
+    if (ch === c || opts.noWorn) continue;
     (ch.equipment || []).forEach((it, i) => addEquip(it, `Worn by ${ch.name}`, `w${ch.playerId}-e${i}`));
     (ch.tools || []).forEach((it, i) => addEquip(it, `Worn by ${ch.name}`, `w${ch.playerId}-t${i}`));
   }
