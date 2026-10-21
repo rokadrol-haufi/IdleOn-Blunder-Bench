@@ -340,7 +340,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
   try { showSame = localStorage.getItem('sgc:showSame') === '1'; } catch (e) {}
   const actResults = new Map();
   let actRunning = null;
-  const isAct = (k) => !!ACTS[k];
+  const isAct = (k) => !!ACTS[k] && !ACTS[k].hidden;
   try { const h = (location.hash || '').replace('#', ''); if (SKILL_ORDER.includes(h) || isAct(h)) current = h; } catch (e) {}
 
   const setStatus = (html) => { $('importStatus').innerHTML = html; };
@@ -360,7 +360,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
 
   // The save comes from the shared Account page (assets/site.js). The analysis takes ~10 s, so it is cached per save.
   const CACHE_VERSION = 'v8-' + BENCH.createdAt;
-  const ACT_CACHE = 'act-v10';
+  const ACT_CACHE = 'act-v11';
   const loadActCache = async () => {
     try { const c = await window.IdleonTools.cache.get('companion-activities', saveId, ACT_CACHE); if (c) for (const [k, v] of Object.entries(c)) actResults.set(k, v); } catch (e) {}
   };
@@ -393,7 +393,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
   // Tabs --------------------------------------------------------------------
   const renderTabs = () => {
     $('tabs').innerHTML = SKILL_ORDER.map((s) => `<button type="button" class="tab" role="tab" id="tab-${s}" aria-selected="${s === current}" data-skill="${s}"><span class="t1">${SKILL_META[s].tab}</span><span class="t2">${SKILL_META[s].sub}</span></button>`).join('');
-    $('actTabs').innerHTML = Object.entries(ACTS).map(([k, a]) => `<button type="button" class="tab" role="tab" id="tab-${k}" aria-selected="${k === current}" data-skill="${k}"><span class="t1">${esc(a.label)}</span><span class="t2">${esc(a.sub)}</span></button>`).join('');
+    $('actTabs').innerHTML = Object.entries(ACTS).filter(([, a]) => !a.hidden).map(([k, a]) => `<button type="button" class="tab" role="tab" id="tab-${k}" aria-selected="${k === current}" data-skill="${k}"><span class="t1">${esc(a.label)}</span><span class="t2">${esc(a.sub)}</span></button>`).join('');
     document.querySelectorAll('#tabs .tab, #actTabs .tab').forEach((b) => b.addEventListener('click', () => { current = b.dataset.skill; openRows.clear(); try { history.replaceState(null, '', '#' + current); } catch (e) {} render(); }));
   };
 
@@ -1065,7 +1065,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
     return `<section class="bis-wrap" aria-label="Best in slot">
       <div class="bis-head"><h2>Best in slot</h2><span class="dnote">Hover or tap an item for its description and stats.</span></div>
       <div class="checks-key"><span><i style="box-shadow:inset 0 0 0 2px #2f9e5a"></i>supered / equipped on ${esc(char?.name || 'this character')}</span><span><i style="box-shadow:inset 0 0 0 2px #d14b3b"></i>not supered / not equipped</span><span>Trophies are checked against your gallery. The snapshot setups are not checked.</span></div>
-      <div class="bis-boards">${presetHtml(skill, char)}${superHtml(skill, char)}${boards.map((b) => bisBoard(b, char)).join('')}${skill === 'fishing' ? spotsHtml() : ''}</div>
+      <div class="bis-boards act-boards">${sampleBoards(skill, char)}${presetHtml(skill, char)}${superHtml(skill, char)}${boards.map((b) => bisBoard(b, char)).join('')}${skill === 'fishing' ? spotsHtml() : ''}</div>
       <p class="credit">Taken and updated from AlmostPsycho's Sampling Sheet. Thank you!</p>
     </section>`;
   };
@@ -1451,14 +1451,22 @@ const ACT_ICONS = /*__ACTICONS__*/;
     for (let i = 0; i < g.cells.length; i += g.cols) rows += `<tr>${g.cells.slice(i, i + g.cols).map((c) => actCellTd(c, g.cat)).join('')}</tr>`;
     return `<div class="sg"><span class="cap">${esc(g.cat)}</span><table class="slots"><tbody>${rows}</tbody></table></div>`;
   };
+  const actArticles = (r) => `<article class="setup"><h3>Best from your account · ${fmtX(r.gain)}</h3><div class="setup-groups">${r.boards.account.map(actGroupHtml).join('')}</div></article>
+        <article class="setup"><h3>Theoretical best in slot · ${fmtX(r.bisGain)}</h3><div class="setup-groups">${r.boards.bis.map(actGroupHtml).join('')}</div><p class="dnote">Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy.</p></article>`;
   const actBoards = (r) => {
     if (!r.boards) return '';
     return `<section class="bis-wrap act-boards" aria-label="Setups">
       <div class="checks-key"><span><i style="box-shadow:inset 0 0 0 2px #2f9e5a"></i>already like this</span><span>L4 / L3 / L2: podium level</span></div>
-      <div class="bis-boards">
-        <article class="setup"><h3>Best from your account · ${fmtX(r.gain)}</h3><div class="setup-groups">${r.boards.account.map(actGroupHtml).join('')}</div></article>
-        <article class="setup"><h3>Theoretical best in slot · ${fmtX(r.bisGain)}</h3><div class="setup-groups">${r.boards.bis.map(actGroupHtml).join('')}</div><p class="dnote">Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy.</p></article>
-      </div></section>`;
+      <div class="bis-boards">${actArticles(r)}</div></section>`;
+  };
+  // Sampling tabs: the same two boards, searched for this character and skill.
+  const sampleBoards = (skill, char) => {
+    if (!saveText) return '';
+    const act = 'sample_' + skill, key = actKey(act, char.name), res = actResults.get(key);
+    if (res && !res.error) return actArticles(res);
+    if (res && res.error) return `<article class="setup"><p class="err">The setup search stopped: ${esc(res.error)}</p></article>`;
+    setTimeout(() => runActivity(act, char.name).then(() => { if (current === skill && charChoice[skill] === char.name) render(); }), 0);
+    return `<article class="setup act-run" role="status"><strong>Finding the best ${esc(skill)} sample setup from your account…</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></article>`;
   };
   const renderActivity = (act) => {
     TIPS = [];

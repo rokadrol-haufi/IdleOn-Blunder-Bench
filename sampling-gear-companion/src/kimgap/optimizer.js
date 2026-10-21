@@ -4,6 +4,8 @@
 // formula for that activity, run on a copy of the character with the swapped loadout.
 import { parseData } from '@parsers/index';
 import { getDropRate, getAfkGain } from '@parsers/character';
+import { getSkillEfficiency } from '@parsers/efficiency';
+import { getMaxDamage } from '@parsers/damage';
 import { getItemCapacity } from '@parsers/misc';
 import { getPowerType } from '@parsers/powerTypes';
 import { getCardSets } from '@parsers/cards';
@@ -24,6 +26,18 @@ export const ACTIVITIES = {
     value(c, chars, A) { const p = this.parts(c, chars, A); return p['Drop rate'] * p['Fight AFK gains']; },
   },
 };
+// Sampling (shown on the sampling tabs, not as activity tabs): the sample grows one to one with AFK gains
+// and with about efficiency^0.35. Max HP / MP stay as the character has them now.
+const SAMPLE_AFK = { mining: 'MINING', chopping: 'CHOPPIN', catching: 'CATCHING', fishing: 'FISHING' };
+for (const [skill, afkType] of Object.entries(SAMPLE_AFK)) {
+  ACTIVITIES['sample_' + skill] = {
+    hidden: true, label: skill[0].toUpperCase() + skill.slice(1) + ' sample', unit: '',
+    prepare: (c, chars, A) => { try { return { pi: getMaxDamage(c, chars, A) }; } catch (e) { return { pi: undefined }; } },
+    parts: (c, chars, A, ctx) => ({ Efficiency: getSkillEfficiency(skill, c, chars, A, ctx?.pi)?.value, 'AFK gains': getAfkGain({ ...c, afkType }, chars, A)?.afkGains }),
+    partUnits: { Efficiency: '', 'AFK gains': '%' },
+    value(c, chars, A, ctx) { const p = this.parts(c, chars, A, ctx); return Math.pow(p.Efficiency, 0.35) * p['AFK gains']; },
+  };
+}
 
 /* Save ------------------------------------------------------------------------------------------ */
 export const parseSave = (raw) => {
@@ -159,6 +173,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   const pid = c.playerId;
   const onProgress = opts.onProgress || (() => {});
   const notes = [];
+  const actCtx = act.prepare ? act.prepare(c, C, A) : null;
   const t0 = Date.now();
   let evals = 0, lastYield = Date.now();
 
@@ -319,11 +334,11 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     if (new Set(ci).size !== ci.length) return -Infinity;
     evals++;
     if (Date.now() - lastYield > 40) { await tick(); lastYield = Date.now(); onProgress({ evals }); }
-    try { const { v, acc, chars } = build(st); const r = act.value(v, chars, acc); return Number.isFinite(r) ? r : -Infinity; } catch (e) { return -Infinity; }
+    try { const { v, acc, chars } = build(st); const r = act.value(v, chars, acc, actCtx); return Number.isFinite(r) ? r : -Infinity; } catch (e) { return -Infinity; }
   };
 
   // Sanity: the rebuilt current loadout must give the same value as the character itself.
-  const own = (() => { try { return act.value(c, C, A); } catch (e) { return null; } })();
+  const own = (() => { try { return act.value(c, C, A, actCtx); } catch (e) { return null; } })();
   const base = await value(init);
   const drift = own && base ? base / own : 1;
   if (Math.abs(drift - 1) > 1e-6) notes.push(`Rebuilding your current setup gives ${(drift * 100 - 100).toFixed(4)}% against the save itself, so small gains may be noise.`);
@@ -771,7 +786,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   let galleryWorth = null;
   if (galleryMoves.length) { const nx = clone(best); nx.trophies = galleryRaw[16].slice(); const val = await value(nx); galleryWorth = val > 0 ? bestV / val : null; }
 
-  const partsOf = (st) => { try { const { v, acc, chars } = build(st); return act.parts ? act.parts(v, chars, acc) : null; } catch (e) { return null; } };
+  const partsOf = (st) => { try { const { v, acc, chars } = build(st); return act.parts ? act.parts(v, chars, acc, actCtx) : null; } catch (e) { return null; } };
   return {
     parts: act.parts ? { now: partsOf(init), best: partsOf(best), bis: partsOf(bis) } : null, partUnits: act.partUnits || null,
     activity: activityKey, char: c.name, cls: c.class, family: fam,
