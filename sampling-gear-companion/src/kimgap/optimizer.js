@@ -8,13 +8,19 @@ import { getSkillEfficiency } from '@parsers/efficiency';
 import { getMaxDamage } from '@parsers/damage';
 import { getItemCapacity } from '@parsers/misc';
 import { getPowerType } from '@parsers/powerTypes';
-import { getCardSets } from '@parsers/cards';
+import { getCardSets, getCardBonusByEffect } from '@parsers/cards';
+import { getGoldenFoodBonus } from '@parsers/misc';
+import { getTalentBonus } from '@parsers/talents';
 import { getInfiniteStarsCount } from '@parsers/starSigns';
 import { isGalleryActive, getTrophyBonuses } from '@parsers/world-7/gallery';
 import { getPrayerBonusAndCurse } from '@parsers/world-3/prayers';
 import { isHatRackActive } from '@parsers/world-3/hatRack';
 import { getLegendTalentBonus } from '@parsers/world-7/legendTalents';
 import { items as ITEMS, classPromotions } from '@website-data';
+
+// IdleonToolbox looks up the Chaotic Troll card (+% All Skill Efficiency) by its rawName "Boss4B" where it should
+// use its cardIndex "Z11", so it never counts. Give the formula a copy it can find.
+export const fixCards = (list) => (Array.isArray(list) ? list.map((x) => (x?.rawName === 'Boss4B' && x.cardIndex !== 'Boss4B' ? { ...x, cardIndex: 'Boss4B', realIndex: x.cardIndex } : x)) : list);
 
 /* Activities ------------------------------------------------------------------------------------ */
 export const ACTIVITIES = {
@@ -156,6 +162,37 @@ const mergeObolStats = (personal, orig) => {
   for (const k of new Set([...Object.keys(personal), ...Object.keys(orig || {})])) out[k] = { personalBonus: personal[k], familyBonus: orig?.[k]?.familyBonus };
   return out;
 };
+// Stats. The save only has each character's totals (STR, AGI, WIS, LUK), so a swap is worked out with
+// total = flat × (1 + percent / 100): the flat and percent parts this page can see (gear, tools, obols,
+// keychains, cards, the gallery, golden food, the "+% stat" talents) are summed, and whatever else makes up
+// the saved total is kept as an unknown flat part. Percent sources outside those are taken as 0.
+const STAT_PCT_TALENT = { STR: 'OVERBLOWN_TESTOSTERONE', AGI: 'ADAPTATION_REVELATION', WIS: 'UTMOST_INTELLECT' };
+export const statParts = (v, acc, chars, skipSlot) => {
+  const F = { STR: 0, AGI: 0, WIS: 0, LUK: 0 }, Pc = { STR: 0, AGI: 0, WIS: 0, LUK: 0 };
+  const uq = (it) => {
+    for (const k of [1, 2]) {
+      const tx = it?.['UQ' + k + 'txt'], val = num(it?.['UQ' + k + 'val']);
+      if (!tx || tx === '0' || !val) continue;
+      if (tx === '%_ALL_STATS') for (const s in Pc) Pc[s] += val;
+      const m = /^(%?)_(STR|AGI|WIS|LUK)$/.exec(tx);
+      if (m) (m[1] ? Pc : F)[m[2]] += val;
+    }
+  };
+  const items = [...(v.equipment || []).filter((_, i) => !skipSlot(i)), ...(v.tools || []), ...(v.obols?.list || [])];
+  for (const it of items) { if (!real(it)) continue; for (const s in F) F[s] += num(it[s]); uq(it); }
+  const cards = v.cards?.equippedCards || [];
+  for (const s in F) F[s] += getCardBonusByEffect(cards, 'Base_' + s) || 0;
+  const allStatCards = getCardBonusByEffect(cards, 'All_Stat') || 0;
+  let gold = 0; try { gold = getGoldenFoodBonus('Golden_Grilled_Cheese_Nomwich', v, acc, chars) || 0; } catch (e) {}
+  const gal = [...(v.gallery?.trophyBonuses || []), ...(v.gallery?.nametagBonuses || [])];
+  const gv = (n) => gal.filter((x) => x?.name === n).reduce((a, x) => a + (Number(x.value) || 0), 0);
+  for (const s in F) {
+    F[s] += gv(s);
+    Pc[s] += allStatCards + gold + gv('%_' + s) + gv('%_ALL_STATS');
+    if (STAT_PCT_TALENT[s]) { try { Pc[s] += getTalentBonus(v.flatTalents, STAT_PCT_TALENT[s]) || 0; } catch (e) {} }
+  }
+  return { F, P: Pc };
+};
 const flatStats = (list) => {
   const s = { STR: 0, AGI: 0, WIS: 0, LUK: 0 };
   for (const it of list) if (real(it)) for (const k of Object.keys(s)) s[k] += num(it[k]);
@@ -288,7 +325,12 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     trophies: galleryRaw ? galleryRaw[16].slice() : null,
   };
   while (init.food.length < foodSlots) init.food.push(null);
-  const origFlat = flatStats([...(c.equipment || []), ...(c.tools || []), ...(c.obols?.list || [])]);
+  // The part of each saved stat total that is not from anything this page swaps.
+  const statOther = (() => {
+    const sp = statParts(c, A, C, skipEquip), o = {};
+    for (const [k, key] of Object.entries(STAT_KEYS)) o[k] = (c.stats?.[key] || 0) / (1 + sp.P[k] / 100) - sp.F[k];
+    return o;
+  })();
   const origObolStats = c.obols?.stats;
 
   const build = (st) => {
@@ -298,13 +340,10 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     const obolList = st.obols.map((e, k) => (e ? { ...e.item, ...obolMeta(myObols[k].item) } : { ...obolMeta(myObols[k].item), rawName: 'Blank' }));
     const hasNano = st.chips.some((e) => e?.chip?.index === 20), hasMother = st.chips.some((e) => e?.chip?.index === 21);
     const cards = st.cards.map((x, i) => (x ? { ...x, chipBoost: (i === 0 && hasNano) || (i === 7 && hasMother) ? 2 : undefined, legendBonus: legend } : {}));
-    const fl = flatStats([...equipment, ...tools, ...obolList]);
-    const stats = { ...c.stats };
-    for (const [k, key] of Object.entries(STAT_KEYS)) stats[key] = (c.stats?.[key] || 0) + fl[k] - origFlat[k];
     const v = {
-      ...b, equipment, tools, stats,
+      ...b, equipment, tools, stats: c.stats,
       food: st.food.map((f) => (f ? foodItem(f.raw, f.amount) : foodItem(null))).concat((c.food || []).slice(st.food.length).map(() => foodItem(null))),
-      cards: { ...c.cards, equippedCards: cards, cardSet: st.cardSet },
+      cards: { ...c.cards, equippedCards: fixCards(cards), cardSet: st.cardSet },
       activePrayers: st.prayers.filter(Boolean),
       starSigns: st.signs,
       obols: { ...c.obols, list: obolList, stats: mergeObolStats(obolPersonal(obolList), origObolStats) },
@@ -314,7 +353,12 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
       v.gallery = { ...(c.gallery || {}), trophyBonuses: tb };
     }
     const acc = { ...A, lab: { ...A.lab, playersChips: (A.lab?.playersChips || []).map((list, p) => (p === pid ? st.chips.filter(Boolean).map((e) => e.chip) : list)) } };
-    return { v, acc, chars: C.map((x) => (x === c ? v : x)) };
+    const chars = C.map((x) => (x === c ? v : x));
+    const sp = statParts(v, acc, chars, skipEquip);
+    const stats = { ...c.stats };
+    for (const [k, key] of Object.entries(STAT_KEYS)) stats[key] = Math.max(0, sp.F[k] + statOther[k]) * (1 + sp.P[k] / 100);
+    v.stats = stats;
+    return { v, acc, chars };
   };
   // Same setup, same value: passes and the pruning step revisit many setups, so remember them.
   const memo = new Map();
@@ -338,7 +382,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   };
 
   // Sanity: the rebuilt current loadout must give the same value as the character itself.
-  const own = (() => { try { return act.value(c, C, A, actCtx); } catch (e) { return null; } })();
+  const own = (() => { try { const pc = { ...c, cards: { ...c.cards, equippedCards: fixCards(c.cards?.equippedCards) } }; return act.value(pc, C.map((x) => (x === c ? pc : x)), A, actCtx); } catch (e) { return null; } })();
   const base = await value(init);
   const drift = own && base ? base / own : 1;
   if (Math.abs(drift - 1) > 1e-6) notes.push(`Rebuilding your current setup gives ${(drift * 100 - 100).toFixed(4)}% against the save itself, so small gains may be noise.`);

@@ -26,6 +26,7 @@ import { getItemCapacity, getGoldenFoodMulti, getGoldenFoodBonus } from '@parser
 import { lavaLog } from '@utility/helpers';
 import { getSuperTalentAddedLevels, isBookEligibleTalent } from '@parsers/talents';
 import { items as ITEMS } from '@website-data';
+import { fixCards } from './optimizer';
 
 // Golden food: what this character's bonus would be with a full food-slot stack (carry cap, or what storage holds).
 const GOLDEN = { mining: ['Golden_Peanut', 'PeanutG'], fishing: ['Golden_Ribs', 'FoodG7'] };
@@ -98,7 +99,7 @@ export const presetCheck = (c, characters, account, skill, pi) => {
   const combos = [];
   for (const ti of talentOpts) for (const ci of (cardOpts.length ? cardOpts : [curC])) {
     const v = effOf(skill, withLoadout(c, ti, ci), characters, account, pi, c);
-    if (v) combos.push({ talent: ti, card: ci, ratio: v / base, cards: (ci === curC ? c.cards?.equippedCards : c.cardPresets?.[ci] || []).map((x) => x?.cardIndex || null) });
+    if (v) combos.push({ talent: ti, card: ci, ratio: v / base, cards: (ci === curC ? c.cards?.equippedCards : c.cardPresets?.[ci] || []).map((x) => x?.realIndex || x?.cardIndex || null) });
   }
   combos.sort((a, b) => b.ratio - a.ratio);
   return { current: { talent: curT, card: curC }, best: combos[0], combos };
@@ -333,6 +334,11 @@ export const analyzeSave = (raw) => {
   const data = save.data ?? save;
   const parsed = parseData(data, save.charNames ?? [], save.companion ?? null, save.guildData ?? null, save.serverVars, save.accountCreateTime ? 1e3 * save.accountCreateTime : undefined, save.tournament, {});
   const account = parsed.account ?? parsed.accountData; const characters = parsed.characters ?? parsed.charactersData;
+  // IdleonToolbox misses the Chaotic Troll card in efficiency (see fixCards); patch the parsed characters.
+  for (const ch of characters) {
+    if (ch?.cards?.equippedCards) ch.cards.equippedCards = fixCards(ch.cards.equippedCards);
+    if (Array.isArray(ch?.cardPresets)) ch.cardPresets = ch.cardPresets.map(fixCards);
+  }
   const samples = bestSamples(account, characters);
   const chars = characters.map((c) => {
     const { trees, values } = characterTrees(c, characters, account);
@@ -359,7 +365,7 @@ export const analyzeSave = (raw) => {
       tools: (c.tools || []).map((x) => x?.rawName).filter((x) => x && x !== 'Blank'),
       food: (c.food || []).map((x) => x?.rawName).filter((x) => x && x !== 'Blank'),
       chips: (account?.lab?.playersChips?.[c.playerId] || []).map((x) => x?.rawName || ('ConsoleChip' + x?.index)).filter(Boolean),
-      cards: (c.cards?.equippedCards || []).map((x) => x?.cardIndex).filter(Boolean),
+      cards: (c.cards?.equippedCards || []).map((x) => x?.realIndex || x?.cardIndex).filter(Boolean),
       cardSet: c.cards?.cardSet?.rawName || null,
       prayers: (c.activePrayers || []).map((x) => 'Prayer' + x?.prayerIndex),
       obols: (c.obols?.list || []).map((x) => x?.rawName).filter((x) => x && !/Locked|Blank/.test(x)),
@@ -438,4 +444,4 @@ export const evaluateTree = (b) => {
 
 
 // Activity tabs: account-wide loadout search (see optimizer.js).
-export { ACTIVITIES, parseSave, optimizeLoadout, stonedItem, familyOf } from './optimizer';
+export { ACTIVITIES, parseSave, optimizeLoadout, stonedItem, familyOf, statParts } from './optimizer';
