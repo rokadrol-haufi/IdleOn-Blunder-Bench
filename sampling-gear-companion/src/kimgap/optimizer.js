@@ -539,18 +539,27 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   const bisItems = { equip: {}, tools: {} };
   const allEquip = Object.keys(ITEMS || {}).map((raw) => (ITEMS[raw]?.itemType === 'Equip' ? raw : null)).filter(Boolean);
   const bisPool = allEquip.map((raw) => stonedItem(raw, fam)).filter((it) => it && classOk(it, fam)).map((it) => ({ id: 'bis-' + it.rawName, item: it, where: 'Item list' }));
-  // Keychains: both lines roll the same stat; best case is the top roll on both. The stat name (and a top roll
-  // above the item list's tiers) is taken from keychains the account owns, where there are any.
-  const owned = {};
-  for (const e of equipPool) { const it = e.item; if (it.Type !== 'KEYCHAIN') continue; for (const k of [1, 2]) { const tx = it['UQ' + k + 'txt']; if (!tx || tx === '0') continue; const o = (owned[it.rawName] = owned[it.rawName] || {}); o[tx] = Math.max(o[tx] || 0, num(it['UQ' + k + 'val'])); } }
+  // Keychains: both lines roll the same stat, so the best roll is the top tier on both lines. Other stat names a
+  // keychain can roll (Sushi Chain STR / AGI / WIS…) are taken from keychains the account owns, as long as their
+  // values fit the normal tiers. Keychains whose rolls are above the tiers (gem shop Relic Chains) cannot be
+  // rolled again, so they only count exactly as owned.
   const keyBis = [];
+  const ownedKeys = equipPool.filter((e) => e.item.Type === 'KEYCHAIN');
   for (const raw of allEquip) {
     const base = ITEMS[raw]; if (base?.Type !== 'KEYCHAIN') continue;
     if (base.UQ2txt && base.UQ2txt !== '0') { keyBis.push(stonedItem(raw, fam)); continue; }
     const tiers = String(base.UQ1val ?? '').split(',').map(Number).filter(Number.isFinite);
-    const stats = { ...(owned[raw] || {}) };
-    if (base.UQ1txt && base.UQ1txt !== '0' && !Object.keys(stats).length) stats[base.UQ1txt] = 0;
-    for (const [tx, seen] of Object.entries(stats)) { const top = Math.max(seen, ...tiers, 0); keyBis.push({ ...base, rawName: raw, UQ1txt: tx, UQ1val: top, UQ2txt: tx, UQ2val: top, keyRoll: true }); }
+    const top = Math.max(0, ...tiers);
+    const stats = new Set(base.UQ1txt && base.UQ1txt !== '0' ? [base.UQ1txt] : []);
+    for (const e of ownedKeys) {
+      if (e.item.rawName !== raw) continue;
+      for (const k of [1, 2]) { const tx = e.item['UQ' + k + 'txt'], v = num(e.item['UQ' + k + 'val']); if (tx && tx !== '0' && v <= top) stats.add(tx); }
+    }
+    for (const tx of stats) keyBis.push({ ...base, rawName: raw, UQ1txt: tx, UQ1val: top, UQ2txt: tx, UQ2val: top, keyRoll: true });
+  }
+  for (const e of ownedKeys) {
+    const tiers = String(ITEMS[e.item.rawName]?.UQ1val ?? '').split(',').map(Number).filter(Number.isFinite);
+    if (num(e.item.UQ1val) > Math.max(0, ...tiers) || num(e.item.UQ2val) > Math.max(0, ...tiers)) keyBis.push({ ...e.item, special: true });
   }
   for (let k = bisPool.length - 1; k >= 0; k--) if (bisPool[k].item.Type === 'KEYCHAIN') bisPool.splice(k, 1);
   keyBis.forEach((it, k) => { if (it) bisPool.push({ id: 'bis-key' + k, item: it, where: 'Item list' }); });
