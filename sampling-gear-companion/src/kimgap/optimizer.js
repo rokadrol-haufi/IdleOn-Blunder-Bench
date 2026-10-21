@@ -51,6 +51,8 @@ export const TOOL_SLOTS = [
   ['Trap box', ['TRAP_BOX_SET'], 'trapping'], ['Worship skull', ['WORSHIP_SKULL'], 'worship'], ['DNA splicer', ['DNA_SPLICER'], 'breeding'],
 ];
 const FOOD_TYPES = ['GOLDEN_FOOD', 'BOOST_FOOD'];
+// In the item list but not in the game yet.
+const UNRELEASED = new Set(['FoodG15']); // Golden Sugar Cookie
 const STAT_KEYS = { STR: 'strength', AGI: 'agility', WIS: 'wisdom', LUK: 'luck' };
 const MAIN_STAT = { WARRIOR: 'STR', ARCHER: 'AGI', MAGE: 'WIS', BEGINNER: 'LUK' };
 const real = (x) => x && x.rawName && x.rawName !== 'Blank' && x.rawName !== 'LockedInvSpace' && x.rawName !== 'ERROR';
@@ -569,7 +571,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   /* Theoretical best in slot: every item in the game for gear, tools, obols and food, on top of the account's best. */
   onProgress({ evals, phase: 'bis' });
   const bisItems = { equip: {}, tools: {} };
-  const allEquip = Object.keys(ITEMS || {}).map((raw) => (ITEMS[raw]?.itemType === 'Equip' ? raw : null)).filter(Boolean);
+  const allEquip = Object.keys(ITEMS || {}).map((raw) => (ITEMS[raw]?.itemType === 'Equip' && !UNRELEASED.has(raw) ? raw : null)).filter(Boolean);
   const bisPool = allEquip.map((raw) => stonedItem(raw, fam)).filter((it) => it && classOk(it, fam)).map((it) => ({ id: 'bis-' + it.rawName, item: it, where: 'Item list' }));
   // Keychains: both lines roll the same stat, so the best roll is the top tier on both lines. Other stat names a
   // keychain can roll (Sushi Chain STR / AGI / WIS…) are taken from keychains the account owns, as long as their
@@ -610,7 +612,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
       [bis, bisV] = await trySlot(bis, bisV, 'obols', i, cands, false);
     }
     for (let i = 0; i < bis.food.length; i++) {
-      const raws = Object.keys(ITEMS || {}).filter((raw) => FOOD_TYPES.includes(ITEMS[raw]?.Type));
+      const raws = Object.keys(ITEMS || {}).filter((raw) => FOOD_TYPES.includes(ITEMS[raw]?.Type) && !UNRELEASED.has(raw));
       const cap = foodCap ?? 1e6;
       [bis, bisV] = await trySlot(bis, bisV, 'food', i, raws.filter((raw) => !bis.food.some((f, k) => k !== i && f?.raw === raw)).map((raw) => ({ raw, amount: cap })), true);
     }
