@@ -183,6 +183,7 @@ tr.section td .src-ctx { font-family: var(--font-body); font-weight: 400; }
 .slot.txt { font-size: 0.7rem; color: var(--muted); }
 table.slots td.multi { position: relative; }
 .act-boards .setup-groups { flex-wrap: wrap; overflow-x: visible; }
+table.slots td.sheet { border-style: dashed; border-color: var(--accent); }
 table.slots td .tier { position: absolute; left: 1px; top: 0; font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700; border-radius: 4px; padding: 0 3px; line-height: 1.25; pointer-events: none; background: var(--sunk); color: var(--muted); }
 table.slots td .tier.t4 { background: var(--accent); color: var(--bg); }
 table.slots td .tier.t3 { background: var(--accent-soft); color: var(--accent); }
@@ -1064,7 +1065,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
     const boards = BIS_BOARDS[skill] || [];
     return `<section class="bis-wrap" aria-label="Best in slot">
       <div class="bis-head"><h2>Best in slot</h2><span class="dnote">Hover or tap an item for its description and stats.</span></div>
-      <div class="checks-key"><span><i style="box-shadow:inset 0 0 0 2px #2f9e5a"></i>supered / equipped on ${esc(char?.name || 'this character')}</span><span><i style="box-shadow:inset 0 0 0 2px #d14b3b"></i>not supered / not equipped</span><span>Trophies are checked against your gallery. The snapshot setups are not checked.</span></div>
+      <div class="checks-key"><span><i style="box-shadow:inset 0 0 0 2px #2f9e5a"></i>supered / equipped on ${esc(char?.name || 'this character')}</span><span><i style="box-shadow:inset 0 0 0 2px #d14b3b"></i>not supered / not equipped</span><span><i style="border:1px dashed var(--accent)"></i>sheet pick (not in the formula)</span><span>Trophies are checked against your gallery. The snapshot setups are not checked.</span></div>
       <div class="bis-boards act-boards">${sampleBoards(skill, char)}${presetHtml(skill, char)}${superHtml(skill, char)}${boards.map((b) => bisBoard(b, char)).join('')}${skill === 'fishing' ? spotsHtml() : ''}</div>
       <p class="credit">Taken and updated from AlmostPsycho's Sampling Sheet. Thank you!</p>
     </section>`;
@@ -1437,13 +1438,13 @@ const ACT_ICONS = /*__ACTICONS__*/;
     if (!s) return `<td class="empty ${cls}"></td>`;
     const src = ACT_ICONS[s.raw] || ICONS[s.raw] || (BIS.imgs && BIS.imgs[s.raw]) || '';
     const btn = src ? slotBtn({ ...s, src }, cat) : `<button type="button" class="slot txt" data-tip="${TIPS.push({ ...s, cat }) - 1}">${esc((s.tip?.title || '?').slice(0, 3))}</button>`;
-    return `<td class="${cls}${s.same ? ' have' : ''}${s.count > 1 || s.tier ? ' multi' : ''}">${btn}${s.count > 1 ? `<span class="cnt">×${s.count}</span>` : ''}${s.tier ? `<span class="tier t${s.tier}" title="Level ${s.tier} podium">L${s.tier}</span>` : ''}</td>`;
+    return `<td class="${cls}${s.same ? ' have' : ''}${s.sheet ? ' sheet' : ''}${s.count > 1 || s.tier ? ' multi' : ''}">${btn}${s.count > 1 ? `<span class="cnt">×${s.count}</span>` : ''}${s.tier ? `<span class="tier t${s.tier}" title="Level ${s.tier} podium">L${s.tier}</span>` : ''}</td>`;
   };
   const actGroupHtml = (g) => {
     if (g.cat === 'Cards') {
       const row = (a) => a.map((c) => actCellTd(c, 'Card', 'cd')).join('');
       const set = g.set;
-      const setTd = set ? `<td class="set${set.same ? ' have' : ''}" rowspan="2">${slotBtn({ ...set, src: ACT_ICONS[set.raw] || ICONS[set.raw] || '' }, 'Card set')}</td>` : '<td class="set empty" rowspan="2"></td>';
+      const setTd = set ? `<td class="set${set.same ? ' have' : ''}${set.sheet ? ' sheet' : ''}" rowspan="2">${slotBtn({ ...set, src: ACT_ICONS[set.raw] || ICONS[set.raw] || '' }, 'Card set')}</td>` : '<td class="set empty" rowspan="2"></td>';
       const cap = g.preset ? `Cards · preset ${g.preset.use + 1}` : 'Cards';
       return `<div class="sg"><span class="cap">${esc(cap)}</span><table class="slots"><tbody><tr>${setTd}${row(g.cards.slice(0, 4))}</tr><tr>${row(g.cards.slice(4, 8))}</tr></tbody></table></div>`;
     }
@@ -1451,8 +1452,33 @@ const ACT_ICONS = /*__ACTICONS__*/;
     for (let i = 0; i < g.cells.length; i += g.cols) rows += `<tr>${g.cells.slice(i, i + g.cols).map((c) => actCellTd(c, g.cat)).join('')}</tr>`;
     return `<div class="sg"><span class="cap">${esc(g.cat)}</span><table class="slots"><tbody>${rows}</tbody></table></div>`;
   };
-  const actArticles = (r) => `<article class="setup"><h3>Best from your account · ${fmtX(r.gain)}</h3><div class="setup-groups">${r.boards.account.map(actGroupHtml).join('')}</div></article>
-        <article class="setup"><h3>Theoretical best in slot · ${fmtX(r.bisGain)}</h3><div class="setup-groups">${r.boards.bis.map(actGroupHtml).join('')}</div><p class="dnote">Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy.</p></article>`;
+  // Sampling boards: IdleonToolbox's formulas have no skill speed and no stat foods, and with the Rift skill
+  // mastery equipped cards add no efficiency. Free food and card slots are filled from the sampling sheet's
+  // setup for this skill, marked as sheet picks.
+  const SHEET_BOARD = { mining: 'Mining', chopping: 'Chopping', catching: 'Catching', fishing: 'Fishing' };
+  const withSheet = (groups, skill, r) => {
+    const b = BIS.boards.find((x) => x.name === SHEET_BOARD[skill]); if (!b) return groups;
+    const out = groups.map((g) => ({ ...g, cells: g.cells && g.cells.slice(), cards: g.cards && g.cards.slice() }));
+    const note = 'Sampling sheet pick: the formula used here does not count it (skill speed, stats, or cards with the Rift skill mastery)';
+    const sheetFood = (b.groups.find((g) => g.cat === 'Food')?.cells || []).filter(Boolean);
+    if (sheetFood.length) {
+      let fg = out.find((g) => g.cat === 'Food');
+      if (!fg) { fg = { cat: 'Food', cols: 2, cells: [] }; const at = out.findIndex((g) => g.cat === 'Gallery podiums'); out.splice(at < 0 ? out.length : at, 0, fg); }
+      const have = new Set(fg.cells.map((c) => c.raw));
+      for (const s of sheetFood) { if (fg.cells.length >= (r.foodSlots || 6)) break; if (!have.has(s.raw)) { fg.cells.push({ ...s, sheet: true, sv: [note] }); have.add(s.raw); } }
+    }
+    const sc = b.groups.find((g) => g.cat === 'Cards');
+    const cg = out.find((g) => g.cat === 'Cards');
+    if (sc && cg) {
+      const have = new Set(cg.cards.filter(Boolean).map((c) => c.raw));
+      const extra = sc.cards.filter((s) => s && !have.has(s.raw));
+      cg.cards = cg.cards.map((c) => c || (extra.length ? { ...extra.shift(), sheet: true, sv: [note] } : null));
+      if (!cg.set && sc.set) cg.set = { ...sc.set, sheet: true, sv: [note] };
+    }
+    return out;
+  };
+  const actArticles = (r, skill) => `<article class="setup"><h3>Best from your account · ${fmtX(r.gain)}</h3><div class="setup-groups">${(skill ? withSheet(r.boards.account, skill, r) : r.boards.account).map(actGroupHtml).join('')}</div></article>
+        <article class="setup"><h3>Theoretical best in slot · ${fmtX(r.bisGain)}</h3><div class="setup-groups">${(skill ? withSheet(r.boards.bis, skill, r) : r.boards.bis).map(actGroupHtml).join('')}</div><p class="dnote">Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy.</p></article>`;
   const actBoards = (r) => {
     if (!r.boards) return '';
     return `<section class="bis-wrap act-boards" aria-label="Setups">
@@ -1463,7 +1489,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
   const sampleBoards = (skill, char) => {
     if (!saveText) return '';
     const act = 'sample_' + skill, key = actKey(act, char.name), res = actResults.get(key);
-    if (res && !res.error) return actArticles(res);
+    if (res && !res.error) return actArticles(res, skill);
     if (res && res.error) return `<article class="setup"><p class="err">The setup search stopped: ${esc(res.error)}</p></article>`;
     setTimeout(() => runActivity(act, char.name).then(() => { if (current === skill && charChoice[skill] === char.name) render(); }), 0);
     return `<article class="setup act-run" role="status"><strong>Finding the best ${esc(skill)} sample setup from your account…</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></article>`;
