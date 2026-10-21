@@ -16,7 +16,7 @@ import { isGalleryActive, getTrophyBonuses } from '@parsers/world-7/gallery';
 import { getPrayerBonusAndCurse } from '@parsers/world-3/prayers';
 import { isHatRackActive } from '@parsers/world-3/hatRack';
 import { getLegendTalentBonus } from '@parsers/world-7/legendTalents';
-import { items as ITEMS, classPromotions } from '@website-data';
+import { items as ITEMS, classPromotions, slab as SLAB } from '@website-data';
 
 // IdleonToolbox looks up the Chaotic Troll card (+% All Skill Efficiency) by its rawName "Boss4B" where it should
 // use its cardIndex "Z11", so it never counts. Give the formula a copy it can find.
@@ -73,6 +73,10 @@ export const TOOL_SLOTS = [
 const FOOD_TYPES = ['GOLDEN_FOOD', 'BOOST_FOOD'];
 // In the item list but not in the game yet.
 const UNRELEASED = new Set(['FoodG15']); // Golden Sugar Cookie
+// Items the game can actually give you: the Slab lists every lootable item. Test and admin items
+// (Demon Horns with 3,000 of every stat, the 10,000 STR Flesh Reaper…) are in the item list but not in it.
+const OBTAINABLE = new Set(Array.isArray(SLAB) ? SLAB : []);
+const inGame = (raw) => !UNRELEASED.has(raw) && (!OBTAINABLE.size || OBTAINABLE.has(raw));
 const STAT_KEYS = { STR: 'strength', AGI: 'agility', WIS: 'wisdom', LUK: 'luck' };
 const MAIN_STAT = { WARRIOR: 'STR', ARCHER: 'AGI', MAGE: 'WIS', BEGINNER: 'LUK' };
 const real = (x) => x && x.rawName && x.rawName !== 'Blank' && x.rawName !== 'LockedInvSpace' && x.rawName !== 'ERROR';
@@ -162,36 +166,48 @@ const mergeObolStats = (personal, orig) => {
   for (const k of new Set([...Object.keys(personal), ...Object.keys(orig || {})])) out[k] = { personalBonus: personal[k], familyBonus: orig?.[k]?.familyBonus };
   return out;
 };
-// Stats. The save only has each character's totals (STR, AGI, WIS, LUK), so a swap is worked out with
-// total = flat × (1 + percent / 100): the flat and percent parts this page can see (gear, tools, obols,
-// keychains, cards, the gallery, golden food, the "+% stat" talents) are summed, and whatever else makes up
-// the saved total is kept as an unknown flat part. Percent sources outside those are taken as 0.
+// Stats. The save only has each character's totals (STR, AGI, WIS, LUK). The game's TotalStats is
+//   total = top + (1 + pct / 100) × (gear base × gear multi + obol base × obol multi + flat base + flat add)
+// (structure from Corgan's idleon-research-optimizer, js/stats/systems/common/stats.js). Gear base is the
+// base stat of worn equipment, tools and gallery items; gear multi comes from the "'STR'ess Tested Garb"
+// talents; obol multi from "Fistful of Obol" and co. plus the obol stat super bit. The pct pool holds
+// % stat and % all stats on gear and obols, All Stat cards, golden food All Stats and the "+% stat" talents.
+// Everything else in the saved total is kept as one unknown flat part, so the swapped parts are exact.
 const STAT_PCT_TALENT = { STR: 'OVERBLOWN_TESTOSTERONE', AGI: 'ADAPTATION_REVELATION', WIS: 'UTMOST_INTELLECT' };
+const GEAR_MULTI_TALENT = { STR: "'STR'ESS_TESTED_GARB", AGI: "GARB_OF_UN'AGI'NG_QUALITY", WIS: "UNT'WIS'TED_ROBES", LUK: "F'LUK'EY_FABRICS" };
+const OBOL_MULTI_TALENT = { STR: 'FISTFUL_OF_OBOL', AGI: 'SHOEFUL_OF_OBOL', WIS: 'OCCULT_OBOLS', LUK: 'CLEVER_CLOVER_OBOLS' };
 export const statParts = (v, acc, chars, skipSlot) => {
-  const F = { STR: 0, AGI: 0, WIS: 0, LUK: 0 }, Pc = { STR: 0, AGI: 0, WIS: 0, LUK: 0 };
+  const S = ['STR', 'AGI', 'WIS', 'LUK'];
+  const z = () => ({ STR: 0, AGI: 0, WIS: 0, LUK: 0 });
+  const E = z(), O = z(), P = z(), FA = z(), em = z(), om = z();
   const uq = (it) => {
     for (const k of [1, 2]) {
       const tx = it?.['UQ' + k + 'txt'], val = num(it?.['UQ' + k + 'val']);
       if (!tx || tx === '0' || !val) continue;
-      if (tx === '%_ALL_STATS') for (const s in Pc) Pc[s] += val;
+      if (tx === '%_ALL_STATS') for (const s of S) P[s] += val;
       const m = /^(%?)_(STR|AGI|WIS|LUK)$/.exec(tx);
-      if (m) (m[1] ? Pc : F)[m[2]] += val;
+      if (m) (m[1] ? P : FA)[m[2]] += val;
     }
   };
-  const items = [...(v.equipment || []).filter((_, i) => !skipSlot(i)), ...(v.tools || []), ...(v.obols?.list || [])];
-  for (const it of items) { if (!real(it)) continue; for (const s in F) F[s] += num(it[s]); uq(it); }
+  for (const it of [...(v.equipment || []).filter((_, i) => !skipSlot(i)), ...(v.tools || [])]) { if (!real(it)) continue; for (const s of S) E[s] += num(it[s]); uq(it); }
+  for (const it of v.obols?.list || []) { if (!real(it)) continue; for (const s of S) O[s] += num(it[s]); uq(it); }
   const cards = v.cards?.equippedCards || [];
-  for (const s in F) F[s] += getCardBonusByEffect(cards, 'Base_' + s) || 0;
   const allStatCards = getCardBonusByEffect(cards, 'All_Stat') || 0;
   let gold = 0; try { gold = getGoldenFoodBonus('Golden_Grilled_Cheese_Nomwich', v, acc, chars) || 0; } catch (e) {}
   const gal = [...(v.gallery?.trophyBonuses || []), ...(v.gallery?.nametagBonuses || [])];
   const gv = (n) => gal.filter((x) => x?.name === n).reduce((a, x) => a + (Number(x.value) || 0), 0);
-  for (const s in F) {
-    F[s] += gv(s);
-    Pc[s] += allStatCards + gold + gv('%_' + s) + gv('%_ALL_STATS');
-    if (STAT_PCT_TALENT[s]) { try { Pc[s] += getTalentBonus(v.flatTalents, STAT_PCT_TALENT[s]) || 0; } catch (e) {} }
+  const tal = (n) => { try { return n ? getTalentBonus(v.flatTalents, n) || 0 : 0; } catch (e) { return 0; } };
+  const superBit = acc?.gaming?.superbitsUpgrades?.[2]?.unlocked ? 40 : 0;
+  for (const s of S) {
+    E[s] += gv(s);
+    FA[s] += getCardBonusByEffect(cards, 'Base_' + s) || 0;
+    P[s] += allStatCards + gold + gv('%_' + s) + gv('%_ALL_STATS') + tal(STAT_PCT_TALENT[s]);
+    em[s] = 1 + tal(GEAR_MULTI_TALENT[s]) / 100;
+    om[s] = 1 + (tal(OBOL_MULTI_TALENT[s]) + superBit) / 100;
   }
-  return { F, P: Pc };
+  const inner = z();
+  for (const s of S) inner[s] = E[s] * em[s] + O[s] * om[s] + FA[s];
+  return { E, O, P, FA, em, om, inner };
 };
 const flatStats = (list) => {
   const s = { STR: 0, AGI: 0, WIS: 0, LUK: 0 };
@@ -328,7 +344,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   // The part of each saved stat total that is not from anything this page swaps.
   const statOther = (() => {
     const sp = statParts(c, A, C, skipEquip), o = {};
-    for (const [k, key] of Object.entries(STAT_KEYS)) o[k] = (c.stats?.[key] || 0) / (1 + sp.P[k] / 100) - sp.F[k];
+    for (const [k, key] of Object.entries(STAT_KEYS)) o[k] = (c.stats?.[key] || 0) / (1 + sp.P[k] / 100) - sp.inner[k];
     return o;
   })();
   const origObolStats = c.obols?.stats;
@@ -356,7 +372,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     const chars = C.map((x) => (x === c ? v : x));
     const sp = statParts(v, acc, chars, skipEquip);
     const stats = { ...c.stats };
-    for (const [k, key] of Object.entries(STAT_KEYS)) stats[key] = Math.max(0, sp.F[k] + statOther[k]) * (1 + sp.P[k] / 100);
+    for (const [k, key] of Object.entries(STAT_KEYS)) stats[key] = Math.max(0, sp.inner[k] + statOther[k]) * (1 + sp.P[k] / 100);
     v.stats = stats;
     return { v, acc, chars };
   };
@@ -630,7 +646,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   /* Theoretical best in slot: every item in the game for gear, tools, obols and food, on top of the account's best. */
   onProgress({ evals, phase: 'bis' });
   const bisItems = { equip: {}, tools: {} };
-  const allEquip = Object.keys(ITEMS || {}).map((raw) => (ITEMS[raw]?.itemType === 'Equip' && !UNRELEASED.has(raw) ? raw : null)).filter(Boolean);
+  const allEquip = Object.keys(ITEMS || {}).map((raw) => (ITEMS[raw]?.itemType === 'Equip' && inGame(raw) ? raw : null)).filter(Boolean);
   const bisPool = allEquip.map((raw) => stonedItem(raw, fam)).filter((it) => it && classOk(it, fam)).map((it) => ({ id: 'bis-' + it.rawName, item: it, where: 'Item list' }));
   // Keychains: both lines roll the same stat, so the best roll is the top tier on both lines. Other stat names a
   // keychain can roll (Sushi Chain STR / AGI / WIS…) are taken from keychains the account owns, as long as their
@@ -671,13 +687,13 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
       [bis, bisV] = await trySlot(bis, bisV, 'obols', i, cands, false);
     }
     for (let i = 0; i < bis.food.length; i++) {
-      const raws = Object.keys(ITEMS || {}).filter((raw) => FOOD_TYPES.includes(ITEMS[raw]?.Type) && !UNRELEASED.has(raw));
+      const raws = Object.keys(ITEMS || {}).filter((raw) => FOOD_TYPES.includes(ITEMS[raw]?.Type) && inGame(raw));
       const cap = foodCap ?? 1e6;
       [bis, bisV] = await trySlot(bis, bisV, 'food', i, raws.filter((raw) => !bis.food.some((f, k) => k !== i && f?.raw === raw)).map((raw) => ({ raw, amount: cap })), true);
     }
     if (bis.trophies) {
       // Every trophy in the game, on the podiums (the highest podium levels first).
-      const allT = Object.keys(ITEMS || {}).map((raw) => /^Trophy(\d+)$/.exec(raw)).filter(Boolean).map((m) => Number(m[1]));
+      const allT = Object.keys(ITEMS || {}).filter(inGame).map((raw) => /^Trophy(\d+)$/.exec(raw)).filter(Boolean).map((m) => Number(m[1]));
       for (let p = 48; p < 48 + podiums; p++) {
         let bs = bis, bv = bisV;
         for (const n of allT) {
