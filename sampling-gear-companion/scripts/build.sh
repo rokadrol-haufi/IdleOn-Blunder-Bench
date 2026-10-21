@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TOOLBOX_COMMIT="${1:-9cf5771bbb0f583368f25d70f286b88c6dcdf4cf}"
+TOOLBOX_COMMIT="${1:-3beed1aefd58cc0a992dbafa3729987af3e0614d}"
 WORK="$ROOT/.build"
 TB="$WORK/IdleonToolbox"
 
@@ -26,6 +26,7 @@ rm -rf "$TB/kimgap" && cp -r "$ROOT/src/kimgap" "$TB/kimgap"
 if [ "${REBUILD_IMAGES:-0}" = "1" ]; then
   TB="$TB" OUT="$ROOT/data" python3 "$ROOT/src/bis/build2.py"
   TB="$TB" OUT="$ROOT/data" python3 "$ROOT/src/icons.py"
+  TB="$TB" OUT="$ROOT/data" python3 "$ROOT/src/act_icons.py"
 fi
 
 # 3. Assemble index.html (no save data is embedded).

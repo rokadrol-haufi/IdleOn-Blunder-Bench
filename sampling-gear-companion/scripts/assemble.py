@@ -19,6 +19,7 @@ parts = [
     ('/*__INP__*/', read('data/benchinp.json')),
     ('/*__BIS__*/', read('data/bis.json')),
     ('/*__ICONS__*/', read('data/icons.json')),
+    ('/*__ACTICONS__*/', read('data/act-icons.json')),
 ]
 for key, value in parts:
     assert key in t, key

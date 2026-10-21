@@ -436,3 +436,6 @@ export const evaluateTree = (b) => {
   return vals.reduce((a, v) => a * v, 1);
 };
 
+
+// Activity tabs: account-wide loadout search (see optimizer.js).
+export { ACTIVITIES, parseSave, optimizeLoadout, stonedItem, familyOf } from './optimizer';
