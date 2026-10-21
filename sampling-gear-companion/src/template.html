@@ -210,7 +210,7 @@ details.more > summary { cursor: pointer; color: var(--accent); font-weight: 500
   <header class="top">
     <span class="eyebrow">Legends of Idleon · 3D Printer samples</span>
     <h1>Sampling and Gear Companion</h1>
-    <p class="lede">Every source of skill efficiency for your sampling character, next to the five best public samplers on the IdleonToolbox leaderboard. Rows are ranked by how much your efficiency would rise if that one source matched the best of them. Gear, cards, card sets, lab chips, obols, armor-set bonuses and tools are set aside, because they change with your loadout.</p>
+    <p class="lede">Your sampling efficiency against the top samplers, and the best setup for each activity from your whole account.</p>
   </header>
 
   <section class="save-strip" id="importBox" aria-label="Save in use">
@@ -359,7 +359,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
 
   // The save comes from the shared Account page (assets/site.js). The analysis takes ~10 s, so it is cached per save.
   const CACHE_VERSION = 'v8-' + BENCH.createdAt;
-  const ACT_CACHE = 'act-v6';
+  const ACT_CACHE = 'act-v7';
   const loadActCache = async () => {
     try { const c = await window.IdleonTools.cache.get('companion-activities', saveId, ACT_CACHE); if (c) for (const [k, v] of Object.entries(c)) actResults.set(k, v); } catch (e) {}
   };
@@ -1409,25 +1409,25 @@ const ACT_ICONS = /*__ACTICONS__*/;
       (pick[x.where] = pick[x.where] || []).push(nm(x.to));
     }
     const fetchHtml = Object.keys(pick).length ? `<div class="fetch"><h3>Where to get it</h3><ul>${Object.entries(pick).map(([w, list]) => `<li><strong>${esc(w)}:</strong> ${esc(list.join(', '))}</li>`).join('')}</ul></div>` : '';
-    const tal = r.talent && r.talent.to !== r.talent.from ? `<div class="callout">Switch to <strong>talent preset ${r.talent.to + 1}</strong> (now ${r.talent.from + 1})${r.talent.worth ? ', worth ' + fmtX(r.talent.worth) + ' on its own' : ''}.</div>` : '';
+    const tal = r.talent && r.talent.to !== r.talent.from ? `<div class="callout">Talents: switch to preset <strong>${r.talent.to + 1}</strong> (now ${r.talent.from + 1})${r.talent.worth ? ', ' + fmtX(r.talent.worth) : ''}.</div>` : '';
     const cp = r.cardPreset;
     const cardMsg = !cp ? '' : cp.exact
-      ? (cp.use === cp.current ? `<div class="callout">Your current card preset (${cp.use + 1}) already is the best card setup.</div>` : `<div class="callout">Card preset <strong>${cp.use + 1}</strong> already is the best card setup: switch to it (now ${cp.current + 1}).</div>`)
-      : `<div class="callout">Cards: edit card preset <strong>${cp.use + 1}</strong>${cp.use === cp.current ? ' (the one you use now)' : ` (you use ${cp.current + 1} now)`}, it already holds ${cp.overlap} of the 8 cards. The card rows below compare with that preset.</div>`;
+      ? (cp.use === cp.current ? '' : `<div class="callout">Cards: switch to preset <strong>${cp.use + 1}</strong> (now ${cp.current + 1}).</div>`)
+      : `<div class="callout">Cards: edit preset <strong>${cp.use + 1}</strong>${cp.use === cp.current ? '' : ` (now ${cp.current + 1})`}, it has ${cp.overlap} of 8 already.</div>`;
     return `<div class="headline">
         <div class="stat"><span class="eyebrow">${esc(meta.label)} score now</span><span class="v">${fmt(r.base)}${unit}</span><span class="s">${esc(r.char)} · ${esc(pretty(r.cls))}</span></div>
-        <div class="stat"><span class="eyebrow">Best from your account</span><span class="v">${fmtX(r.gain)}</span><span class="s">${fmt(r.best)}${unit} with ${changed.length} change${changed.length === 1 ? '' : 's'} below</span></div>
-        <div class="stat"><span class="eyebrow">Theoretical best in slot</span><span class="v">${fmtX(r.bisGain)}</span><span class="s">${fmt(r.bis)}${unit} with the best item of the game in every gear, tool, obol and food slot</span></div>
+        <div class="stat"><span class="eyebrow">Best from your account</span><span class="v">${fmtX(r.gain)}</span><span class="s">${changed.length} change${changed.length === 1 ? '' : 's'}</span></div>
+        <div class="stat"><span class="eyebrow">Theoretical best in slot</span><span class="v">${fmtX(r.bisGain)}</span><span class="s">every item in the game</span></div>
       </div>
       ${r.parts && r.parts.now ? `<div class="scroll"><table class="minitable"><thead><tr><th>Part of the score</th><th class="num">Now</th><th class="num">Best from your account</th><th class="num">Best in slot</th></tr></thead><tbody>${Object.keys(r.parts.now).map((k) => { const u = r.partUnits?.[k] === 'x' ? '×' : r.partUnits?.[k] === '%' ? '%' : ''; const v = (x) => (x == null ? '–' : u === '%' ? fmt(100 * x) + '%' : fmt(x) + u); const n = r.parts.now[k], b = r.parts.best?.[k], s = r.parts.bis?.[k]; return `<tr><td>${esc(k)}</td><td class="num">${v(n)}</td><td class="num">${v(b)}${n && b ? ` <span class="muted">(${fmtX(b / n)})</span>` : ''}</td><td class="num">${v(s)}${n && s ? ` <span class="muted">(${fmtX(s / n)})</span>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : ''}
       ${tal}
       ${cardMsg}
-      ${r.gallery ? (r.gallery.moves.length ? `<div class="callout">Gallery podiums (changes the gallery for every character${r.gallery.worth ? ', ' + fmtX(r.gallery.worth) + ' on this score' : ''}): ${r.gallery.moves.map((m) => `on a <strong>level ${m.level} podium</strong>: ${esc(m.toName)} instead of ${esc(m.fromName)}`).join('; ')}.</div>` : `<p class="dnote">Gallery podiums: your ${r.gallery.podiums} podium trophies are already in the best order for this.</p>`) : ''}
+      ${r.gallery && r.gallery.moves.length ? `<div class="callout">Gallery (all characters${r.gallery.worth ? ', ' + fmtX(r.gallery.worth) : ''}): ${r.gallery.moves.map((m) => `<strong>L${m.level}</strong> ${esc(m.toName)} instead of ${esc(m.fromName)}`).join('; ')}.</div>` : ''}
       ${actBoards(r)}
       ${fetchHtml}
       <div class="sources"><div class="scroll"><table class="acttable"><thead><tr><th>Slot</th><th>Now</th><th>Use instead</th><th>Where it is</th><th class="num">Worth</th><th>Best in slot (game)</th></tr></thead><tbody>${body}</tbody></table></div></div>
-      <p class="dnote"><strong>Worth</strong> is the best setup divided by the best setup with only that slot put back as it is now. Best in slot assumes every upgrade slot (plus one from the Post Office box) filled with the matching Upgrade Stone VII; main stat stones go to ${esc(r.family ? { WARRIOR: 'STR', ARCHER: 'AGI', MAGE: 'WIS', BEGINNER: 'LUK' }[r.family] || 'the main stat' : 'the main stat')}. ${fmt(r.evals)} setups tried in ${(r.ms / 1000).toFixed(1)} s.</p>
-      <ul class="notes-list">${r.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
+      <p class="dnote">Worth: what that one change adds.</p>
+      ${r.notes.length ? `<ul class="notes-list">${r.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}`;
   };
   // Setup boards in the same layout as the sampling best-in-slot boards; green = already like this.
   const actCellTd = (s, cat, cls = '') => {
@@ -1451,11 +1451,10 @@ const ACT_ICONS = /*__ACTICONS__*/;
   const actBoards = (r) => {
     if (!r.boards) return '';
     return `<section class="bis-wrap act-boards" aria-label="Setups">
-      <div class="bis-head"><h2>Setups</h2><span class="dnote">Hover or tap a slot for its stats, what is there now and where to find it.</span></div>
-      <div class="checks-key"><span><i style="box-shadow:inset 0 0 0 2px #2f9e5a"></i>already like this on ${esc(r.char)}</span><span>L4, L3, L2: the gallery podium level a trophy should go on</span></div>
+      <div class="checks-key"><span><i style="box-shadow:inset 0 0 0 2px #2f9e5a"></i>already like this</span><span>L4 / L3 / L2: podium level</span></div>
       <div class="bis-boards">
-        <article class="setup"><h3>Best from your account</h3><div class="setup-groups">${r.boards.account.map(actGroupHtml).join('')}</div><p class="dnote">Only items, cards, chips and food your account has. ${fmtX(r.gain)} on the score.</p></article>
-        <article class="setup"><h3>Theoretical best in slot</h3><div class="setup-groups">${r.boards.bis.map(actGroupHtml).join('')}</div><p class="dnote">The best item of the game in every gear, tool, obol and food slot, with Upgrade Stone VII in every upgrade slot (plus one from the Post Office box). Keychains with the top roll on both lines; gallery podiums from every trophy in the game. Cards, prayers and chips are the account's best. ${fmtX(r.bisGain)} on the score.</p></article>
+        <article class="setup"><h3>Best from your account · ${fmtX(r.gain)}</h3><div class="setup-groups">${r.boards.account.map(actGroupHtml).join('')}</div></article>
+        <article class="setup"><h3>Theoretical best in slot · ${fmtX(r.bisGain)}</h3><div class="setup-groups">${r.boards.bis.map(actGroupHtml).join('')}</div><p class="dnote">Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy.</p></article>
       </div></section>`;
   };
   const renderActivity = (act) => {
@@ -1468,12 +1467,11 @@ const ACT_ICONS = /*__ACTICONS__*/;
     const char = actChar[act] || null;
     const res = char ? actResults.get(actKey(act, char)) : null;
     panel.innerHTML = `
-      <p class="dnote">${esc(meta.what)} The search tries every item, card, prayer, chip, obol and food your account has, wherever it is (storage, any inventory, worn by another character), one slot at a time until nothing improves, and tells you where each one is.</p>
       <div class="controls">
         <div class="field"><label for="actChar">Character</label><select id="actChar">${char ? '' : '<option value="" selected disabled>Pick a character…</option>'}${chars.map((c) => `<option value="${esc(c.name)}" ${c.name === char ? 'selected' : ''}>${esc(c.name)} · ${esc(pretty(c.cls))} · lv ${c.level}</option>`).join('')}</select></div>
         <label class="check" for="showSame"><input type="checkbox" id="showSame" ${showSame ? 'checked' : ''}> Show slots that stay the same</label>
       </div>
-      ${!char ? '<p class="lede">Pick the character you want a setup for.</p>' : res ? actResultHtml(res, act) : `<div class="act-run" role="status"><strong>Finding the best ${esc(meta.label.toLowerCase())} setup for ${esc(char)}</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span><span class="dnote">This takes 20 to 40 seconds per character.</span></div>`}`;
+      ${!char ? '<p class="lede">Pick the character you want a setup for.</p>' : res ? actResultHtml(res, act) : `<div class="act-run" role="status"><strong>Finding the best ${esc(meta.label.toLowerCase())} setup for ${esc(char)}</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></div>`}`;
     $('actChar').addEventListener('change', (e) => { actChar[act] = e.target.value; render(); });
     $('showSame').addEventListener('change', (e) => { showSame = e.target.checked; try { localStorage.setItem('sgc:showSame', showSame ? '1' : '0'); } catch (x) {} render(); });
     if (char && !res) runActivity(act, char).then(() => { if (current === act && actChar[act] === char) render(); });
@@ -1484,6 +1482,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
     renderTabs();
     const panel = $('panel');
     if (!analysis) { panel.innerHTML = '<p class="lede">Import a save to compare it with the top samplers.</p>'; return; }
+    const notesEl = document.querySelector('section.notes'); if (notesEl) notesEl.hidden = isAct(current);
     if (isAct(current)) { renderActivity(current); return; }
     const skill = current, meta = SKILL_META[skill];
     if (!charChoice[skill]) charChoice[skill] = pickDefaultChar(skill);

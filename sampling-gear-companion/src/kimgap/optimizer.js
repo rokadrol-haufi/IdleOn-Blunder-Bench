@@ -18,7 +18,7 @@ import { items as ITEMS, classPromotions } from '@website-data';
 export const ACTIVITIES = {
   rareDrops: {
     label: 'Rare Drops', sub: 'AFK · drop rate × fight AFK gains', unit: '',
-    what: 'Rare drops per hour while AFK grow with your drop rate and, one to one, with your fighting AFK gains (AFK kills give drops at that rate). So the score is drop rate × fight AFK gains, both as IdleonToolbox works them out.',
+    what: 'Score = drop rate × Fight AFK gains.',
     parts: (c, chars, A) => ({ 'Drop rate': getDropRate(c, A, chars)?.dropRate, 'Fight AFK gains': getAfkGain({ ...c, afkType: 'FIGHTING' }, chars, A)?.afkGains }),
     partUnits: { 'Drop rate': 'x', 'Fight AFK gains': '%' },
     value(c, chars, A) { const p = this.parts(c, chars, A); return p['Drop rate'] * p['Fight AFK gains']; },
@@ -150,7 +150,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   const fam = familyOf(c.class);
   const pid = c.playerId;
   const onProgress = opts.onProgress || (() => {});
-  const notes = ['Gear swaps change STR, AGI, WIS and LUK by the items\' own flat stats. Percent bonuses to those stats are not applied on top, so a stat-heavy swap is a little better than shown.'];
+  const notes = [];
   const t0 = Date.now();
   let evals = 0, lastYield = Date.now();
 
@@ -211,7 +211,6 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   // Star signs: only those not already active through Infinite Stars.
   const infinite = (() => { try { return getInfiniteStarsCount(A); } catch (e) { return 0; } })();
   const signPool = (A?.starSigns || []).filter((s, i) => s?.unlocked && i >= infinite && s.starName);
-  if (!signPool.length) notes.push('Star signs are left as they are: every star sign you have unlocked is already active through Infinite Stars.');
 
   // Obols: the obol storage and other characters' personal obols, by shape.
   const obolPool = [];
