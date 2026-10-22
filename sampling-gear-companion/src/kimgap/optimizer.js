@@ -811,10 +811,11 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     if (!better(bisV, before)) break;
   }
 
-  /* What does something for this activity: a slot counts if emptying it changes the score. */
+  /* What does something for this activity: a slot counts if emptying it changes the score by more than 0.01%
+     (Class EXP potions and the like at your stage do not). */
   const relevance = async (S, V) => {
     const rel = {};
-    const test = async (k, mut) => { const nx = clone(S); mut(nx); const v = await value(nx); rel[k] = Math.abs(v - V) > Math.abs(V) * 1e-7; };
+    const test = async (k, mut) => { const nx = clone(S); mut(nx); const v = await value(nx); rel[k] = Math.abs(v - V) > Math.abs(V) * 1e-4; };
     for (let i = 0; i < S.equip.length; i++) if (!skipEquip(i) && S.equip[i]) await test('equip' + i, (n) => { n.equip[i] = null; });
     for (let i = 0; i < S.tools.length; i++) if (S.tools[i]) await test('tools' + i, (n) => { n.tools[i] = null; });
     for (let i = 0; i < S.cards.length; i++) if (S.cards[i]) await test('cards' + i, (n) => { n.cards[i] = null; });
