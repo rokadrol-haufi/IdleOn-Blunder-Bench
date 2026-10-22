@@ -12,7 +12,7 @@ import { getCardSets, getCardBonusByEffect } from '@parsers/cards';
 import { getGoldenFoodBonus } from '@parsers/misc';
 import { getTalentBonus } from '@parsers/talents';
 import { getInfiniteStarsCount } from '@parsers/starSigns';
-import { isGalleryActive, getTrophyBonuses } from '@parsers/world-7/gallery';
+import { isGalleryActive, getTrophyBonuses, getNametagBonuses } from '@parsers/world-7/gallery';
 import { getPrayerBonusAndCurse } from '@parsers/world-3/prayers';
 import { isHatRackActive } from '@parsers/world-3/hatRack';
 import { getLegendTalentBonus } from '@parsers/world-7/legendTalents';
@@ -56,10 +56,13 @@ ACTIVITIES.classXp = {
   parts: (c, chars, A, ctx) => {
     const { v, cs, p } = fightAt(c, chars, A, ctx.map);
     const multiCards = getCardBonusByEffect(v.cards?.equippedCards, 'Class_EXP_Multi') || 0;
+    // The Shimmerfin Deep card set (Class EXP Multi) is the game's CardSetBonuses(12); IdleonToolbox reads it
+    // from the wrong place, so it never counts there.
+    const setMulti = v.cards?.cardSet?.rawName === 'CardSet10' ? Number(v.cards.cardSet.bonus) || 0 : 0;
     // EXP comes from "reward-roll" kills: kills per hour × fight AFK gains × survivability. Kill-per-kill
     // ("More Kills", "Bonus Kills" gear) only adds credited kills, not EXP, coins or drops; matches an in-game test.
     const rewardKills = (p.killsPerHour || 0) * (p.afkGains || 0) * ((p.survivability ?? 100) / 100);
-    return { 'Kills per hour (EXP)': rewardKills, 'Class EXP multi': getClassExpMulti(v, A, cs).value * (1 + multiCards / 100) };
+    return { 'Kills per hour (EXP)': rewardKills, 'Class EXP multi': getClassExpMulti(v, A, cs).value * (1 + multiCards / 100) * (1 + setMulti / 100) };
   },
   partUnits: { 'Kills per hour (EXP)': '', 'Class EXP multi': 'x' },
   value(c, chars, A, ctx) { const q = this.parts(c, chars, A, ctx); return q['Kills per hour (EXP)'] * ctx.map.exp * q['Class EXP multi']; },
@@ -318,7 +321,9 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   const setPool = (() => { try { return Object.values(getCardSets(A) || {}).filter((s) => s?.rawName && s.stars >= 0).map((s) => ({ ...s, bonus: (s.bonus || 0) * (s.stars + 1) })); } catch (e) { return []; } })();
 
   // Prayers the account has unlocked.
-  const prayerPool = (A?.prayers || []).filter((p) => p && p.level > 0);
+  // Unending Energy is left out: its gain is small and forgetting to take it off afterwards is costly.
+  const NO_PRAYERS = new Set(['Unending_Energy']);
+  const prayerPool = (A?.prayers || []).filter((p) => p && p.level > 0 && !NO_PRAYERS.has(p.name));
 
   // Lab chips: spare ones plus those sitting in other characters' slots.
   const chipPool = [];
@@ -363,7 +368,24 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     (A?.storage?.list || []).forEach((it) => addT(it, 'Storage'));
     for (const ch of C) { (ch.inventory || []).forEach((it) => addT(it, ch === c ? 'Your inventory' : `${ch.name}'s inventory`)); (ch.equipment || []).forEach((it) => addT(it, ch === c ? 'Equipped' : `Worn by ${ch.name}`)); }
   }
-  const trophyBonusFor = (list) => { const rs = galleryRaw.slice(); rs[16] = list; return getTrophyBonuses(rs, A, c)?.bonuses; };
+  // Gallery bonuses depend on the Silkrode Motherboard chip (+10% gallery bonus multi). In the game, one
+  // character with the chip checking the gallery gives that bonus to every character, as long as no character
+  // without it checks the gallery after. With that trick (opts.galleryChip, on by default when the account owns
+  // the chip) the chip's gallery bonus counts whatever this character has equipped, so its slot is free.
+  const ownsGalleryChip = (A?.lab?.playersChips || []).some((l) => (l || []).some((x) => x?.index === 16)) || (A?.lab?.chips || []).some((x) => x?.index === 16 && x.amount > 0);
+  const galleryChip = galleryRaw && opts.galleryChip !== false && ownsGalleryChip;
+  const myChipsNo16 = (A?.lab?.playersChips?.[pid] || []).filter((x) => x?.index !== 16);
+  const chipAcc = (on) => ({ ...A, lab: { ...A.lab, playersChips: (A.lab?.playersChips || []).map((l, p) => (p === pid ? (on ? [...myChipsNo16, { index: 16, baseVal: 1 }] : myChipsNo16) : l)) } });
+  const galCache = new Map();
+  const galleryFor = (list, on) => {
+    const key = (on ? 1 : 0) + '|' + list.join(',');
+    if (galCache.has(key)) return galCache.get(key);
+    const rs = galleryRaw.slice(); rs[16] = list; const acc = chipAcc(on);
+    const g = { trophyBonuses: getTrophyBonuses(rs, acc, c)?.bonuses, nametagBonuses: getNametagBonuses(rs, acc, c)?.bonuses };
+    galCache.set(key, g); return g;
+  };
+  const hasChip16 = (A?.lab?.playersChips?.[pid] || []).some((x) => x?.index === 16);
+  const trophyBonusFor = (list) => galleryFor(list, hasChip16).trophyBonuses;
   if (galleryRaw) {
     const mine = trophyBonusFor(galleryRaw[16]) || [], saved = c.gallery?.trophyBonuses || A.gallery?.trophyBonuses || [];
     const off = saved.some((b) => Math.abs((mine.find((x) => x.name === b.name)?.value ?? 0) - (b.value || 0)) > 1e-6 * Math.max(1, Math.abs(b.value || 0)));
@@ -407,13 +429,13 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
       ...b, equipment, tools, stats: c.stats,
       food: st.food.map((f) => (f ? foodItem(f.raw, f.amount) : foodItem(null))).concat((c.food || []).slice(st.food.length).map(() => foodItem(null))),
       cards: { ...c.cards, equippedCards: fixCards(cards), cardSet: st.cardSet },
-      activePrayers: st.prayers.filter(Boolean),
+      activePrayers: st.prayers.filter((p) => p && !NO_PRAYERS.has(p.name)),
       starSigns: st.signs,
       obols: { ...c.obols, list: obolList, stats: mergeObolStats(obolPersonal(obolList), origObolStats) },
     };
-    if (st.trophies && st.trophies.some((x, k) => x !== galleryRaw[16][k])) {
-      const tb = trophyBonusFor(st.trophies);
-      v.gallery = { ...(c.gallery || {}), trophyBonuses: tb };
+    if (galleryRaw && c.gallery) {
+      const on = galleryChip || st.chips.some((e) => e?.chip?.index === 16);
+      if (on !== hasChip16 || st.trophies.some((x, k) => x !== galleryRaw[16][k])) v.gallery = { ...c.gallery, ...galleryFor(st.trophies, on) };
     }
     const acc = { ...A, lab: { ...A.lab, playersChips: (A.lab?.playersChips || []).map((list, p) => (p === pid ? st.chips.filter(Boolean).map((e) => e.chip) : list)) } };
     const chars = C.map((x) => (x === c ? v : x));
@@ -445,10 +467,11 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   };
 
   // Sanity: the rebuilt current loadout must give the same value as the character itself.
-  const own = (() => { try { const pc = { ...c, cards: { ...c.cards, equippedCards: fixCards(c.cards?.equippedCards) } }; return act.value(pc, C.map((x) => (x === c ? pc : x)), A, actCtx); } catch (e) { return null; } })();
+  const own = (() => { try { const pc = { ...c, activePrayers: (c.activePrayers || []).filter((p) => p && !NO_PRAYERS.has(p.name)), cards: { ...c.cards, equippedCards: fixCards(c.cards?.equippedCards) } }; return act.value(pc, C.map((x) => (x === c ? pc : x)), A, actCtx); } catch (e) { return null; } })();
   const base = await value(init);
   const drift = own && base ? base / own : 1;
-  if (Math.abs(drift - 1) > 1e-6) notes.push(`Rebuilding your current setup gives ${(drift * 100 - 100).toFixed(4)}% against the save itself, so small gains may be noise.`);
+  if (galleryChip && !hasChip16) notes.push('Gallery chip trick: counted as if a character with the Silkrode Motherboard last checked the gallery.');
+  else if (Math.abs(drift - 1) > 1e-6) notes.push(`Rebuilding your current setup gives ${(drift * 100 - 100).toFixed(4)}% against the save itself, so small gains may be noise.`);
 
   /* One slot at a time: try every candidate, keep the best; repeat until nothing improves. */
   const better = (a, b) => a > b * (1 + 1e-9);
@@ -741,6 +764,13 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
       if (key === 'equip' && skipEquip(i)) continue;
       const cands = undominated(bisPool.filter((p) => slots[i][1].includes(p.item.Type)));
       [bis, bisV] = await trySlot(bis, bisV, key, i, cands, false);
+    }
+    // Lab chips: every chip type, as if crafted.
+    for (let i = 0; i < bis.chips.length; i++) {
+      const one = new Set(bis.chips.map((e, k) => (k !== i && e?.chip?.bool1 === '1' ? e.chip.index : null)).filter((x) => x != null));
+      const owned = new Set([...(A?.lab?.chips || []).filter((x) => x.amount > 0).map((x) => x.index), ...(A?.lab?.playersChips || []).flat().map((x) => x?.index)]);
+      const cands = (A?.lab?.chips || []).filter((ch) => ch && ch.index != null && !one.has(ch.index)).map((ch) => ({ id: 'bis-chip' + ch.index, chip: ch, where: owned.has(ch.index) ? 'Your chips' : 'Craft it in the lab' }));
+      [bis, bisV] = await trySlot(bis, bisV, 'chips', i, cands, true);
     }
     for (let i = 0; i < bis.obols.length; i++) {
       const slot = myObols[i]?.item; if (!slot?.shape) continue;
