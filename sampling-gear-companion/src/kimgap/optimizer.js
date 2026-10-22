@@ -16,7 +16,8 @@ import { isGalleryActive, getTrophyBonuses } from '@parsers/world-7/gallery';
 import { getPrayerBonusAndCurse } from '@parsers/world-3/prayers';
 import { isHatRackActive } from '@parsers/world-3/hatRack';
 import { getLegendTalentBonus } from '@parsers/world-7/legendTalents';
-import { items as ITEMS, classPromotions, slab as SLAB } from '@website-data';
+import { items as ITEMS, classPromotions, slab as SLAB, monsters as MONSTERS, mapEnemiesArray, mapNames } from '@website-data';
+import { getClassExpMulti } from '@parsers/character';
 
 // IdleonToolbox looks up the Chaotic Troll card (+% All Skill Efficiency) by its rawName "Boss4B" where it should
 // use its cardIndex "Z11", so it never counts. Give the formula a copy it can find.
@@ -32,6 +33,29 @@ export const ACTIVITIES = {
     value(c, chars, A) { const p = this.parts(c, chars, A); return p['Drop rate'] * p['Fight AFK gains']; },
   },
 };
+// Fighting maps worth AFKing on for class EXP: the W7 maps with the most EXP per kill.
+export const EXP_MAPS = (mapEnemiesArray || []).map((mon, i) => {
+  const m = MONSTERS?.[mon];
+  return m && m.AFKtype === 'FIGHTING' && m.Type === 'Monster' && m.ExpGiven > 0 && i >= 300 ? { index: i, monster: mon, name: String(mapNames?.[i] || mon).replace(/_/g, ' '), mob: String(m.Name || mon).replace(/_/g, ' '), exp: m.ExpGiven, respawn: m.RespawnTime } : null;
+}).filter(Boolean).sort((a, b) => b.exp - a.exp).slice(0, 8);
+const atMap = (c, mp) => ({ ...c, mapIndex: mp.index, targetMonster: mp.monster, afkType: 'FIGHTING' });
+const fightAt = (c, chars, A, mp) => { const v = atMap(c, mp); const cs = chars.map((x) => (x.name === c.name ? v : x)); return { v, cs, p: getMaxDamage(v, cs, A) }; };
+ACTIVITIES.classXp = {
+  label: 'Class XP', sub: 'AFK · class EXP per hour', unit: '', maps: EXP_MAPS, slow: true,
+  // The map: the one picked on the page, or the one with the most class EXP per hour for this character now.
+  prepare: (c, chars, A, opts = {}) => {
+    let best = EXP_MAPS.find((m) => m.index === opts.map) || null;
+    if (!best) {
+      let bv = -1;
+      for (const mp of EXP_MAPS) { try { const { v, cs, p } = fightAt(c, chars, A, mp); const val = p.finalKillsPerHour * mp.exp * getClassExpMulti(v, A, cs).value; if (val > bv) { bv = val; best = mp; } } catch (e) {} }
+    }
+    return { map: best || EXP_MAPS[0], picked: !!opts.map };
+  },
+  parts: (c, chars, A, ctx) => { const { v, cs, p } = fightAt(c, chars, A, ctx.map); return { 'Kills per hour': p.finalKillsPerHour, 'Class EXP multi': getClassExpMulti(v, A, cs).value }; },
+  partUnits: { 'Kills per hour': '', 'Class EXP multi': 'x' },
+  value(c, chars, A, ctx) { const q = this.parts(c, chars, A, ctx); return q['Kills per hour'] * ctx.map.exp * q['Class EXP multi']; },
+};
+
 // Sampling (shown on the sampling tabs, not as activity tabs): the sample grows one to one with AFK gains
 // and with about efficiency^0.35. Max HP / MP stay as the character has them now.
 const SAMPLE_AFK = { mining: 'MINING', chopping: 'CHOPPIN', catching: 'CATCHING', fishing: 'FISHING' };
@@ -103,6 +127,20 @@ const levelOk = (c, it, skill) => {
 
 // What makes two items interchangeable for every formula: all stats plus the misc bonuses.
 const SIG_KEYS = ['Type', 'Class', 'Weapon_Power', 'STR', 'AGI', 'WIS', 'LUK', 'Defence', 'Speed', 'Reach', 'UQ1txt', 'UQ1val', 'UQ2txt', 'UQ2val', 'Effect', 'Amount', 'Power'];
+// Candidates that are worse or equal in every stat to another candidate cannot win; skipping them saves a
+// lot of formula runs on the slow activities.
+const statVec = (it) => {
+  const v = {};
+  for (const k of ['Weapon_Power', 'STR', 'AGI', 'WIS', 'LUK', 'Defence', 'Speed', 'Reach']) v[k] = num(it?.[k]);
+  for (const k of Object.keys(it || {})) if (/_Power$/.test(k) && k !== 'Weapon_Power') v[k] = num(it[k]);
+  for (const n of [1, 2]) { let tx = it?.['UQ' + n + 'txt']; if (!tx || tx === '0') continue; if (tx === '%_DROP_CHANCE') tx = '%_DROP_RATE'; v['UQ:' + tx] = (v['UQ:' + tx] || 0) + num(it['UQ' + n + 'val']); }
+  return v;
+};
+const dominates = (b, a) => { let strict = false; for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) { const x = a[k] || 0, y = b[k] || 0; if (x > y) return false; if (y > x) strict = true; } return strict; };
+export const undominated = (list, itemOf = (e) => e.item) => {
+  const vs = list.map((e) => statVec(itemOf(e)));
+  return list.filter((_, i) => !vs.some((w, j) => j !== i && dominates(w, vs[i])));
+};
 const sig = (it) => (it ? (it.rawName ?? it.name ?? it.starName ?? it.cardIndex) + '|' + SIG_KEYS.map((k) => it[k] ?? '').join('|') : 'none');
 
 /* Theoretical best in slot: base item + (upgrade slots + 1 from the Post Office box) W7 stones -------- */
@@ -226,7 +264,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   const pid = c.playerId;
   const onProgress = opts.onProgress || (() => {});
   const notes = [];
-  const actCtx = act.prepare ? act.prepare(c, C, A) : null;
+  const actCtx = act.prepare ? act.prepare(c, C, A, opts) : null;
   const t0 = Date.now();
   let evals = 0, lastYield = Date.now();
 
@@ -429,21 +467,21 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   };
 
   const categories = opts.categories || ['equip', 'tools', 'cards', 'cardSet', 'prayers', 'chips', 'signs', 'obols', 'gallery', 'food'];
-  let cardTop = null, cardsScanned = false;
+  let cardTop = null, cardTopWide = null, cardsScanned = false;
   const boostSlots = (st) => [st.chips.some((e) => e?.chip?.index === 20) ? 0 : null, st.chips.some((e) => e?.chip?.index === 21) ? 7 : null].filter((x) => x != null);
   const search = async (start) => {
     let st = start, cur = await value(st);
-    for (let pass = 0; pass < 4; pass++) {
+    for (let pass = 0; pass < (act.slow ? 2 : 4); pass++) {
       const before = cur;
       if (categories.includes('equip')) for (let i = 0; i < EQUIP_SLOTS.length && i < st.equip.length; i++) {
         if (skipEquip(i)) continue;
         const ids = used(st); ids.delete(st.equip[i]?.id);
-        const cands = equipPool.filter((p) => !ids.has(p.id) && EQUIP_SLOTS[i][1].includes(p.item.Type) && classOk(p.item, fam) && levelOk(c, p.item));
+        const cands = undominated(equipPool.filter((p) => !ids.has(p.id) && EQUIP_SLOTS[i][1].includes(p.item.Type) && classOk(p.item, fam) && levelOk(c, p.item)));
         [st, cur] = await trySlot(st, cur, 'equip', i, cands);
       }
       if (categories.includes('tools')) for (let i = 0; i < TOOL_SLOTS.length && i < st.tools.length; i++) {
         const ids = used(st); ids.delete(st.tools[i]?.id);
-        const cands = equipPool.filter((p) => !ids.has(p.id) && TOOL_SLOTS[i][1].includes(p.item.Type) && levelOk(c, p.item, TOOL_SLOTS[i][2]));
+        const cands = undominated(equipPool.filter((p) => !ids.has(p.id) && TOOL_SLOTS[i][1].includes(p.item.Type) && levelOk(c, p.item, TOOL_SLOTS[i][2])));
         [st, cur] = await trySlot(st, cur, 'tools', i, cands);
       }
       if (categories.includes('cards')) {
@@ -458,12 +496,13 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
           }
           ranked.sort((a, b) => b[1] - a[1]);
           cardTop = ranked.slice(0, 16).map((x) => x[0]);
+          cardTopWide = ranked.slice(0, 32).map((x) => x[0]);
         }
         // Slots the Omega chips double: every card is tried there, not just the top of the ranking.
         const boosted = boostSlots(st);
         for (let i = 0; i < st.cards.length; i++) {
           const have = new Set(st.cards.map((x, k) => (k === i ? null : x?.cardIndex)).filter(Boolean));
-          const pool = boosted.includes(i) && !cardsScanned ? cardPool : cardTop.concat(st.cards.filter(Boolean));
+          const pool = boosted.includes(i) && !cardsScanned ? cardTopWide : cardTop.concat(st.cards.filter(Boolean));
           [st, cur] = await trySlot(st, cur, 'cards', i, pool.filter((x) => !have.has(x.cardIndex)));
         }
         cardsScanned = true;
@@ -500,7 +539,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
       if (categories.includes('obols')) for (let i = 0; i < st.obols.length; i++) {
         const slot = myObols[i]?.item; if (!slot?.shape) continue;
         const ids = used(st); ids.delete(st.obols[i]?.id);
-        const pool = [...myObols, ...obolPool].filter((e) => real(e.item) && !ids.has(e.id) && obolShapeOk(slot, e.item) && classOk(e.item, fam));
+        const pool = undominated([...myObols, ...obolPool].filter((e) => real(e.item) && !ids.has(e.id) && obolShapeOk(slot, e.item) && classOk(e.item, fam)));
         [st, cur] = await trySlot(st, cur, 'obols', i, pool);
       }
       if (categories.includes('gallery') && st.trophies) for (let p = 48; p < 48 + podiums; p++) {
@@ -678,12 +717,12 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     const before = bisV;
     for (const [key, slots] of Object.entries(bisCats)) for (let i = 0; i < slots.length && i < bis[key].length; i++) {
       if (key === 'equip' && skipEquip(i)) continue;
-      const cands = bisPool.filter((p) => slots[i][1].includes(p.item.Type));
+      const cands = undominated(bisPool.filter((p) => slots[i][1].includes(p.item.Type)));
       [bis, bisV] = await trySlot(bis, bisV, key, i, cands, false);
     }
     for (let i = 0; i < bis.obols.length; i++) {
       const slot = myObols[i]?.item; if (!slot?.shape) continue;
-      const cands = allEquip.filter((raw) => obolShapeOk(slot, ITEMS[raw])).map((raw) => ({ id: 'bis-' + raw, item: { ...ITEMS[raw], rawName: raw }, where: 'Item list' }));
+      const cands = undominated(allEquip.filter((raw) => obolShapeOk(slot, ITEMS[raw])).map((raw) => ({ id: 'bis-' + raw, item: { ...ITEMS[raw], rawName: raw }, where: 'Item list' })));
       [bis, bisV] = await trySlot(bis, bisV, 'obols', i, cands, false);
     }
     for (let i = 0; i < bis.food.length; i++) {
@@ -694,9 +733,19 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     if (bis.trophies) {
       // Every trophy in the game, on the podiums (the highest podium levels first).
       const allT = Object.keys(ITEMS || {}).filter(inGame).map((raw) => /^Trophy(\d+)$/.exec(raw)).filter(Boolean).map((m) => Number(m[1]));
+      // Rank every trophy once on the top podium, then fill the podiums from the best 20.
+      const rankedT = [];
+      for (const n of allT) {
+        if (n === bis.trophies[48]) { rankedT.push([n, bisV]); continue; }
+        const nx = clone(bis); const j = nx.trophies.indexOf(n);
+        if (j >= 0) [nx.trophies[48], nx.trophies[j]] = [nx.trophies[j], nx.trophies[48]]; else nx.trophies[48] = n;
+        rankedT.push([n, await value(nx)]);
+      }
+      rankedT.sort((a, b) => b[1] - a[1]);
+      const topT = rankedT.slice(0, 20).map((x) => x[0]);
       for (let p = 48; p < 48 + podiums; p++) {
         let bs = bis, bv = bisV;
-        for (const n of allT) {
+        for (const n of topT) {
           if (n === bis.trophies[p]) continue;
           const nx = clone(bis); const j = nx.trophies.indexOf(n);
           if (j >= 0) [nx.trophies[p], nx.trophies[j]] = [nx.trophies[j], nx.trophies[p]];
@@ -731,7 +780,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     if (!(bestV > v * (1 + 1e-4))) { best = nx; bestV = v; }
   }
   onProgress({ evals, phase: 'relevance' });
-  const relB = await relevance(best, bestV), relS = await relevance(bis, bisV), relI = await relevance(init, base);
+  const relB = await relevance(best, bestV), relS = await relevance(bis, bisV);
 
   /* Report ------------------------------------------------------------------------------------------ */
   // Keychains roll their stats, so the roll is part of what to look for.
@@ -762,7 +811,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   for (const r of rows) r.changed = JSON.stringify([r.from?.raw, r.from?.amount, r.from?.roll, r.fromName]) !== JSON.stringify([r.to?.raw, r.to?.amount, r.to?.roll, r.fromName === undefined ? undefined : r.to?.name]) && !(r.cat === 'Star signs' && r.fromName === r.to?.name);
   for (const r of rows) if (r.cat === 'Star signs') { r.from = r.fromName ? { name: r.fromName } : null; r.changed = (r.fromName ?? null) !== (r.to?.name ?? null); }
   // Only what does something for this activity: the recommended thing counts, or what is there now does.
-  for (const r of rows) r.relevant = r.changed || !!relB[r.k] || !!relI[r.k];
+  for (const r of rows) r.relevant = r.changed || !!relB[r.k];
   // Identical obol changes (same obol out, same obol in, same place) are one row.
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i]; if (r.cat !== 'Obols' || !r.changed || r.merged) continue;
@@ -851,6 +900,6 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     parts: act.parts ? { now: partsOf(init), best: partsOf(best), bis: partsOf(bis) } : null, partUnits: act.partUnits || null,
     activity: activityKey, char: c.name, cls: c.class, family: fam,
     current: own ?? base, base, best: bestV, gain: bestV / base, bis: bisV, bisGain: bisV / base,
-    talent: { from: init.talent, to: best.talent, worth: worth.talent ?? null }, cardPreset: cardPresetInfo, boards, gallery: galleryRaw ? { checked: true, podiums, moves: galleryMoves, worth: galleryWorth } : null, foodCap, foodSlots, rows, notes, evals, ms: Date.now() - t0,
+    talent: { from: init.talent, to: best.talent, worth: worth.talent ?? null }, cardPreset: cardPresetInfo, map: actCtx?.map || null, mapPicked: !!actCtx?.picked, boards, gallery: galleryRaw ? { checked: true, podiums, moves: galleryMoves, worth: galleryWorth } : null, foodCap, foodSlots, rows, notes, evals, ms: Date.now() - t0,
   };
 };

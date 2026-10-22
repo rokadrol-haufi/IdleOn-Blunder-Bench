@@ -1359,14 +1359,15 @@ const ACT_ICONS = /*__ACTICONS__*/;
   };
 
   // Activities ----------------------------------------------------------------
-  const actKey = (act, char) => `${act}|${char}|${noWorn ? 1 : 0}`;
+  const actMap = {}; // activity -> picked map index ('' = best for the character)
+  const actKey = (act, char) => `${act}|${char}|${noWorn ? 1 : 0}|${actMap[act] ?? ''}`;
   const runActivity = (act, char) => {
     const key = actKey(act, char);
     if (actRunning) return actRunning.key === key ? actRunning.p : actRunning.p.then(() => runActivity(act, char));
     const p = (async () => {
       await new Promise((r) => setTimeout(r, 30));
       if (!parsedSave) { setActProgress('Reading your save…'); await new Promise((r) => setTimeout(r, 30)); parsedSave = KimGap.parseSave(saveText); }
-      const res = await KimGap.optimizeLoadout(parsedSave, char, act, { noWorn, onProgress: (x) => setActProgress(x.phase === 'relevance' ? `Checking which slots matter for this… ${fmt(x.evals)} setups tried` : x.phase === 'bis' ? `Working out the best in slot from every item in the game… ${fmt(x.evals)} setups tried` : `Searching your account… ${fmt(x.evals)} setups tried`) });
+      const res = await KimGap.optimizeLoadout(parsedSave, char, act, { noWorn, map: actMap[act] === '' || actMap[act] == null ? undefined : Number(actMap[act]), onProgress: (x) => setActProgress(x.phase === 'relevance' ? `Checking which slots matter for this… ${fmt(x.evals)} setups tried` : x.phase === 'bis' ? `Working out the best in slot from every item in the game… ${fmt(x.evals)} setups tried` : `Searching your account… ${fmt(x.evals)} setups tried`) });
       actResults.set(key, res); saveActCache();
       return res;
     })().catch((e) => { actResults.set(key, { error: String(e && e.message || e) }); }).finally(() => { actRunning = null; });
@@ -1419,7 +1420,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
       ? (cp.use === cp.current ? '' : `<div class="callout">Cards: switch to preset <strong>${cp.use + 1}</strong> (now ${cp.current + 1}).</div>`)
       : `<div class="callout">Cards: edit preset <strong>${cp.use + 1}</strong>${cp.use === cp.current ? '' : ` (now ${cp.current + 1})`}, it has ${cp.overlap} of 8 already.</div>`;
     return `<div class="headline">
-        <div class="stat"><span class="eyebrow">${esc(meta.label)} score now</span><span class="v">${fmt(r.base)}${unit}</span><span class="s">${esc(r.char)} · ${esc(pretty(r.cls))}</span></div>
+        <div class="stat"><span class="eyebrow">${esc(meta.label)} score now</span><span class="v">${fmt(r.base)}${unit}</span><span class="s">${esc(r.char)} · ${esc(pretty(r.cls))}${r.map ? ` · ${esc(r.map.name)} (${esc(r.map.mob)})${r.mapPicked ? '' : ', best map'}` : ''}</span></div>
         <div class="stat"><span class="eyebrow">Best from your account</span><span class="v">${fmtX(r.gain)}</span><span class="s">${changed.length} change${changed.length === 1 ? '' : 's'}</span></div>
         <div class="stat"><span class="eyebrow">Theoretical best in slot</span><span class="v">${fmtX(r.bisGain)}</span><span class="s">every item in the game</span></div>
       </div>
@@ -1506,11 +1507,13 @@ const ACT_ICONS = /*__ACTICONS__*/;
     panel.innerHTML = `
       <div class="controls">
         <div class="field"><label for="actChar">Character</label><select id="actChar">${char ? '' : '<option value="" selected disabled>Pick a character…</option>'}${chars.map((c) => `<option value="${esc(c.name)}" ${c.name === char ? 'selected' : ''}>${esc(c.name)} · ${esc(pretty(c.cls))} · lv ${c.level}</option>`).join('')}</select></div>
+        ${meta.maps ? `<div class="field"><label for="actMap">Map</label><select id="actMap"><option value="">Best for this character</option>${meta.maps.map((m) => `<option value="${m.index}" ${String(actMap[act] ?? '') === String(m.index) ? 'selected' : ''}>${esc(m.name)} · ${esc(m.mob)} · ${fmt(m.exp)} EXP</option>`).join('')}</select></div>` : ''}
         <label class="check" for="noWorn"><input type="checkbox" id="noWorn" ${noWorn ? 'checked' : ''}> Don't take gear other characters wear</label>
         <label class="check" for="showSame"><input type="checkbox" id="showSame" ${showSame ? 'checked' : ''}> Show slots that stay the same</label>
       </div>
       ${!char ? '<p class="lede">Pick the character you want a setup for.</p>' : res ? actResultHtml(res, act) : `<div class="act-run" role="status"><strong>Finding the best ${esc(meta.label.toLowerCase())} setup for ${esc(char)}</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></div>`}`;
     $('actChar').addEventListener('change', (e) => { actChar[act] = e.target.value; render(); });
+    if ($('actMap')) $('actMap').addEventListener('change', (e) => { actMap[act] = e.target.value; render(); });
     $('noWorn').addEventListener('change', (e) => { noWorn = e.target.checked; try { localStorage.setItem('sgc:noWorn', noWorn ? '1' : '0'); } catch (x) {} render(); });
     $('showSame').addEventListener('change', (e) => { showSame = e.target.checked; try { localStorage.setItem('sgc:showSame', showSame ? '1' : '0'); } catch (x) {} render(); });
     if (char && !res) runActivity(act, char).then(() => { if (current === act && actChar[act] === char) render(); });
