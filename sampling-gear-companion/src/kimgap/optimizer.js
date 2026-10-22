@@ -68,6 +68,15 @@ ACTIVITIES.classXp = {
   value(c, chars, A, ctx) { const q = this.parts(c, chars, A, ctx); return q['Kills per hour (EXP)'] * ctx.map.exp * q['Class EXP multi']; },
 };
 
+// Kills per hour on Green Mushrooms (Spore Meadows): credited kills, so kill-per-kill (multikill) gear counts.
+const GMUSH = (() => { const i = (mapEnemiesArray || []).indexOf('mushG'); return { index: i, monster: 'mushG', name: String(mapNames?.[i] || 'Spore Meadows').replace(/_/g, ' '), mob: 'Green Mushroom', exp: MONSTERS?.mushG?.ExpGiven || 0 }; })();
+ACTIVITIES.kph = {
+  label: 'Kills per hour', sub: 'AFK · Green Mushroom', unit: '', slow: true,
+  prepare: () => ({ map: GMUSH, picked: true }),
+  parts: (c, chars, A, ctx) => { const { p } = fightAt(c, chars, A, ctx.map); return { 'Kills per hour': p.finalKillsPerHour }; },
+  value(c, chars, A, ctx) { return this.parts(c, chars, A, ctx)['Kills per hour']; },
+};
+
 // Sampling (shown on the sampling tabs, not as activity tabs): the sample grows one to one with AFK gains
 // and with about efficiency^0.35. Max HP / MP stay as the character has them now.
 const SAMPLE_AFK = { mining: 'MINING', chopping: 'CHOPPIN', catching: 'CATCHING', fishing: 'FISHING' };
