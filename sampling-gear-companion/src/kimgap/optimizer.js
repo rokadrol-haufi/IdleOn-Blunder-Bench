@@ -327,7 +327,8 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
 
   // Lab chips: spare ones plus those sitting in other characters' slots.
   const chipPool = [];
-  (A?.lab?.chips || []).forEach((ch) => { for (let k = 0; k < (ch?.amount || 0); k++) chipPool.push({ id: `spare${ch.index}-${k}`, chip: ch, where: 'Spare chips' }); });
+  // IdleonToolbox: repoAmount = chips not in any character's slots, amount = chips in use.
+  (A?.lab?.chips || []).forEach((ch) => { for (let k = 0; k < (ch?.repoAmount || 0); k++) chipPool.push({ id: `spare${ch.index}-${k}`, chip: ch, where: 'Spare chips' }); });
   (A?.lab?.playersChips || []).forEach((list, p) => {
     if (p === pid) return;
     const owner = C.find((x) => x.playerId === p)?.name || `Character ${p + 1}`;
@@ -372,7 +373,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   // character with the chip checking the gallery gives that bonus to every character, as long as no character
   // without it checks the gallery after. With that trick (opts.galleryChip, on by default when the account owns
   // the chip) the chip's gallery bonus counts whatever this character has equipped, so its slot is free.
-  const ownsGalleryChip = (A?.lab?.playersChips || []).some((l) => (l || []).some((x) => x?.index === 16)) || (A?.lab?.chips || []).some((x) => x?.index === 16 && x.amount > 0);
+  const ownsGalleryChip = (A?.lab?.playersChips || []).some((l) => (l || []).some((x) => x?.index === 16)) || (A?.lab?.chips || []).some((x) => x?.index === 16 && x.totalAmount > 0);
   const galleryChip = galleryRaw && opts.galleryChip !== false && ownsGalleryChip;
   const myChipsNo16 = (A?.lab?.playersChips?.[pid] || []).filter((x) => x?.index !== 16);
   const chipAcc = (on) => ({ ...A, lab: { ...A.lab, playersChips: (A.lab?.playersChips || []).map((l, p) => (p === pid ? (on ? [...myChipsNo16, { index: 16, baseVal: 1 }] : myChipsNo16) : l)) } });
@@ -768,7 +769,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     // Lab chips: every chip type, as if crafted.
     for (let i = 0; i < bis.chips.length; i++) {
       const one = new Set(bis.chips.map((e, k) => (k !== i && e?.chip?.bool1 === '1' ? e.chip.index : null)).filter((x) => x != null));
-      const owned = new Set([...(A?.lab?.chips || []).filter((x) => x.amount > 0).map((x) => x.index), ...(A?.lab?.playersChips || []).flat().map((x) => x?.index)]);
+      const owned = new Set([...(A?.lab?.chips || []).filter((x) => x.repoAmount > 0).map((x) => x.index), ...(A?.lab?.playersChips || []).flat().map((x) => x?.index)]);
       const cands = (A?.lab?.chips || []).filter((ch) => ch && ch.index != null && !one.has(ch.index)).map((ch) => ({ id: 'bis-chip' + ch.index, chip: ch, where: owned.has(ch.index) ? 'Your chips' : 'Craft it in the lab' }));
       [bis, bisV] = await trySlot(bis, bisV, 'chips', i, cands, true);
     }
