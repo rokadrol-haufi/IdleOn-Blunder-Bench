@@ -1619,12 +1619,11 @@ const ACT_ICONS = {"2CardsA0":"data:image/webp;base64,UklGRuoBAABXRUJQVlA4WAoAAA
     const cardMsg = !cp ? '' : cp.exact
       ? (cp.use === cp.current ? '' : `<div class="callout">Cards: switch to preset <strong>${cp.use + 1}</strong> (now ${cp.current + 1}).</div>`)
       : `<div class="callout">Cards: edit preset <strong>${cp.use + 1}</strong>${cp.use === cp.current ? '' : ` (now ${cp.current + 1})`}, it has ${cp.overlap} of 8 already.</div>`;
-    return `<div class="headline">
-        <div class="stat"><span class="eyebrow">${esc(meta.label)} score now</span><span class="v">${fmt(r.base)}${unit}</span><span class="s">${esc(r.char)} · ${esc(pretty(r.cls))}${r.map ? ` · ${esc(r.map.name)} (${esc(r.map.mob)})${r.mapPicked ? '' : ', best map'}` : ''}</span></div>
+    return `${r.map ? `<p class="dnote">Map: <strong>${esc(r.map.name)}</strong> (${esc(r.map.mob)})${r.mapPicked ? '' : ', the best map for this character'}</p>` : ''}
+      <div class="headline">
         <div class="stat"><span class="eyebrow">Best from your account</span><span class="v">${fmtX(r.gain)}</span><span class="s">${changed.length} change${changed.length === 1 ? '' : 's'}</span></div>
         <div class="stat"><span class="eyebrow">Theoretical best in slot</span><span class="v">${fmtX(r.bisGain)}</span><span class="s">every item in the game</span></div>
       </div>
-      ${r.parts && r.parts.now ? `<div class="scroll"><table class="minitable"><thead><tr><th>Part of the score</th><th class="num">Now</th><th class="num">Best from your account</th><th class="num">Best in slot</th></tr></thead><tbody>${Object.keys(r.parts.now).map((k) => { const u = r.partUnits?.[k] === 'x' ? '×' : r.partUnits?.[k] === '%' ? '%' : ''; const v = (x) => (x == null ? '–' : u === '%' ? fmt(100 * x) + '%' : fmt(x) + u); const n = r.parts.now[k], b = r.parts.best?.[k], s = r.parts.bis?.[k]; return `<tr><td>${esc(k)}</td><td class="num">${v(n)}</td><td class="num">${v(b)}${n && b ? ` <span class="muted">(${fmtX(b / n)})</span>` : ''}</td><td class="num">${v(s)}${n && s ? ` <span class="muted">(${fmtX(s / n)})</span>` : ''}</td></tr>`; }).join('')}</tbody></table></div>` : ''}
       ${tal}
       ${cardMsg}
       ${r.gallery && r.gallery.moves.length ? `<div class="callout">Gallery (all characters${r.gallery.worth ? ', ' + fmtX(r.gallery.worth) : ''}): ${r.gallery.moves.map((m) => `<strong>L${m.level}</strong> ${esc(m.toName)} instead of ${esc(m.fromName)}`).join('; ')}.</div>` : ''}
