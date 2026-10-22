@@ -47,7 +47,7 @@ ACTIVITIES.classXp = {
     let best = EXP_MAPS.find((m) => m.index === opts.map) || null;
     if (!best) {
       let bv = -1;
-      for (const mp of EXP_MAPS) { try { const { v, cs, p } = fightAt(c, chars, A, mp); const val = p.finalKillsPerHour * mp.exp * getClassExpMulti(v, A, cs).value; if (val > bv) { bv = val; best = mp; } } catch (e) {} }
+      for (const mp of EXP_MAPS) { try { const { v, cs, p } = fightAt(c, chars, A, mp); const val = p.killsPerHour * p.afkGains * ((p.survivability ?? 100) / 100) * mp.exp * getClassExpMulti(v, A, cs).value; if (val > bv) { bv = val; best = mp; } } catch (e) {} }
     }
     return { map: best || EXP_MAPS[0], picked: !!opts.map };
   },
@@ -56,10 +56,13 @@ ACTIVITIES.classXp = {
   parts: (c, chars, A, ctx) => {
     const { v, cs, p } = fightAt(c, chars, A, ctx.map);
     const multiCards = getCardBonusByEffect(v.cards?.equippedCards, 'Class_EXP_Multi') || 0;
-    return { 'Kills per hour': p.finalKillsPerHour, 'Class EXP multi': getClassExpMulti(v, A, cs).value * (1 + multiCards / 100) };
+    // EXP comes from "reward-roll" kills: kills per hour × fight AFK gains × survivability. Kill-per-kill
+    // ("More Kills", "Bonus Kills" gear) only adds credited kills, not EXP, coins or drops; matches an in-game test.
+    const rewardKills = (p.killsPerHour || 0) * (p.afkGains || 0) * ((p.survivability ?? 100) / 100);
+    return { 'Kills per hour (EXP)': rewardKills, 'Class EXP multi': getClassExpMulti(v, A, cs).value * (1 + multiCards / 100) };
   },
-  partUnits: { 'Kills per hour': '', 'Class EXP multi': 'x' },
-  value(c, chars, A, ctx) { const q = this.parts(c, chars, A, ctx); return q['Kills per hour'] * ctx.map.exp * q['Class EXP multi']; },
+  partUnits: { 'Kills per hour (EXP)': '', 'Class EXP multi': 'x' },
+  value(c, chars, A, ctx) { const q = this.parts(c, chars, A, ctx); return q['Kills per hour (EXP)'] * ctx.map.exp * q['Class EXP multi']; },
 };
 
 // Sampling (shown on the sampling tabs, not as activity tabs): the sample grows one to one with AFK gains
