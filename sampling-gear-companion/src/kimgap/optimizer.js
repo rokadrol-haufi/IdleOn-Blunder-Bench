@@ -276,6 +276,8 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   const pid = c.playerId;
   const onProgress = opts.onProgress || (() => {});
   const notes = [];
+  // Gains below 0.01% are dropped unless the page asks for a full min-max.
+  const SMALL = opts.minmax ? 1e-9 : 1e-4;
   const actCtx = act.prepare ? act.prepare(c, C, A, opts) : null;
   const t0 = Date.now();
   let evals = 0, lastYield = Date.now();
@@ -619,9 +621,9 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
       if (key !== 'food' && nx[key][i]?.id && used(st).has(nx[key][i].id)) continue;
       const val = await value(nx);
       // Changes worth under 0.01% on their own are not worth the trip.
-      if (!(cur > val * (1 + 1e-4))) { st = nx; cur = val; }
+      if (!(cur > val * (1 + SMALL))) { st = nx; cur = val; }
     }
-    if (st.cardSet?.rawName !== init.cardSet?.rawName) { const nx = clone(st); nx.cardSet = init.cardSet; const val = await value(nx); if (!(cur > val * (1 + 1e-4))) { st = nx; cur = val; } }
+    if (st.cardSet?.rawName !== init.cardSet?.rawName) { const nx = clone(st); nx.cardSet = init.cardSet; const val = await value(nx); if (!(cur > val * (1 + SMALL))) { st = nx; cur = val; } }
     return [st, cur];
   };
   const sameEntry = (key, a, b) => {
@@ -815,7 +817,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
      (Class EXP potions and the like at your stage do not). */
   const relevance = async (S, V) => {
     const rel = {};
-    const test = async (k, mut) => { const nx = clone(S); mut(nx); const v = await value(nx); rel[k] = Math.abs(v - V) > Math.abs(V) * 1e-4; };
+    const test = async (k, mut) => { const nx = clone(S); mut(nx); const v = await value(nx); rel[k] = Math.abs(v - V) > Math.abs(V) * SMALL; };
     for (let i = 0; i < S.equip.length; i++) if (!skipEquip(i) && S.equip[i]) await test('equip' + i, (n) => { n.equip[i] = null; });
     for (let i = 0; i < S.tools.length; i++) if (S.tools[i]) await test('tools' + i, (n) => { n.tools[i] = null; });
     for (let i = 0; i < S.cards.length; i++) if (S.cards[i]) await test('cards' + i, (n) => { n.cards[i] = null; });
@@ -831,7 +833,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   // Gallery moves are account-wide: only suggest them when they are worth at least 0.01%.
   if (best.trophies && best.trophies.some((x, k) => x !== galleryRaw[16][k])) {
     const nx = clone(best); nx.trophies = galleryRaw[16].slice(); const v = await value(nx);
-    if (!(bestV > v * (1 + 1e-4))) { best = nx; bestV = v; }
+    if (!(bestV > v * (1 + SMALL))) { best = nx; bestV = v; }
   }
   onProgress({ evals, phase: 'relevance' });
   const relB = await relevance(best, bestV), relS = await relevance(bis, bisV);

@@ -336,7 +336,8 @@ const ACT_ICONS = /*__ACTICONS__*/;
   const ACTS = KimGap.ACTIVITIES;
   let saveText = null, saveId = null, parsedSave = null;
   const actChar = {};
-  let showSame = false, noWorn = false, galleryChip = true;
+  let showSame = false, noWorn = false, galleryChip = true, minmax = false;
+  try { minmax = localStorage.getItem('sgc:minmax') === '1'; } catch (e) {}
   try { galleryChip = localStorage.getItem('sgc:galleryChip') !== '0'; } catch (e) {}
   try { noWorn = localStorage.getItem('sgc:noWorn') === '1'; } catch (e) {}
   try { showSame = localStorage.getItem('sgc:showSame') === '1'; } catch (e) {}
@@ -362,7 +363,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
 
   // The save comes from the shared Account page (assets/site.js). The analysis takes ~10 s, so it is cached per save.
   const CACHE_VERSION = 'v9-' + BENCH.createdAt;
-  const ACT_CACHE = 'act-v18';
+  const ACT_CACHE = 'act-v19';
   const loadActCache = async () => {
     try { const c = await window.IdleonTools.cache.get('companion-activities', saveId, ACT_CACHE); if (c) for (const [k, v] of Object.entries(c)) actResults.set(k, v); } catch (e) {}
   };
@@ -1361,14 +1362,14 @@ const ACT_ICONS = /*__ACTICONS__*/;
 
   // Activities ----------------------------------------------------------------
   const actMap = {}; // activity -> picked map index ('' = best for the character)
-  const actKey = (act, char) => `${act}|${char}|${noWorn ? 1 : 0}|${galleryChip ? 1 : 0}|${actMap[act] ?? ''}`;
+  const actKey = (act, char) => `${act}|${char}|${noWorn ? 1 : 0}|${galleryChip ? 1 : 0}|${minmax ? 1 : 0}|${actMap[act] ?? ''}`;
   const runActivity = (act, char) => {
     const key = actKey(act, char);
     if (actRunning) return actRunning.key === key ? actRunning.p : actRunning.p.then(() => runActivity(act, char));
     const p = (async () => {
       await new Promise((r) => setTimeout(r, 30));
       if (!parsedSave) { setActProgress('Reading your save…'); await new Promise((r) => setTimeout(r, 30)); parsedSave = KimGap.parseSave(saveText); }
-      const res = await KimGap.optimizeLoadout(parsedSave, char, act, { noWorn, galleryChip, map: actMap[act] === '' || actMap[act] == null ? undefined : Number(actMap[act]), onProgress: (x) => setActProgress(x.phase === 'relevance' ? `Checking which slots matter for this… ${fmt(x.evals)} setups tried` : x.phase === 'bis' ? `Working out the best in slot from every item in the game… ${fmt(x.evals)} setups tried` : `Searching your account… ${fmt(x.evals)} setups tried`) });
+      const res = await KimGap.optimizeLoadout(parsedSave, char, act, { noWorn, galleryChip, minmax, map: actMap[act] === '' || actMap[act] == null ? undefined : Number(actMap[act]), onProgress: (x) => setActProgress(x.phase === 'relevance' ? `Checking which slots matter for this… ${fmt(x.evals)} setups tried` : x.phase === 'bis' ? `Working out the best in slot from every item in the game… ${fmt(x.evals)} setups tried` : `Searching your account… ${fmt(x.evals)} setups tried`) });
       actResults.set(key, res); saveActCache();
       return res;
     })().catch((e) => { actResults.set(key, { error: String(e && e.message || e) }); }).finally(() => { actRunning = null; });
@@ -1509,6 +1510,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
         <div class="field"><label for="actChar">Character</label><select id="actChar">${char ? '' : '<option value="" selected disabled>Pick a character…</option>'}${chars.map((c) => `<option value="${esc(c.name)}" ${c.name === char ? 'selected' : ''}>${esc(c.name)} · ${esc(pretty(c.cls))} · lv ${c.level}</option>`).join('')}</select></div>
         ${meta.maps ? `<div class="field"><label for="actMap">Map</label><select id="actMap"><option value="">Best for this character</option>${meta.maps.map((m) => `<option value="${m.index}" ${String(actMap[act] ?? '') === String(m.index) ? 'selected' : ''}>${esc(m.name)} · ${esc(m.mob)} · ${fmt(m.exp)} EXP</option>`).join('')}</select></div>` : ''}
         <label class="check" for="galleryChip" title="One character with the Silkrode Motherboard checks the gallery last, so every character gets its gallery bonus"><input type="checkbox" id="galleryChip" ${galleryChip ? 'checked' : ''}> Gallery chip trick</label>
+        <label class="check" for="minmax" title="Also show swaps and slots worth less than 0.01%"><input type="checkbox" id="minmax" ${minmax ? 'checked' : ''}> Full min-max</label>
         <label class="check" for="noWorn"><input type="checkbox" id="noWorn" ${noWorn ? 'checked' : ''}> Don't take gear other characters wear</label>
         <label class="check" for="showSame"><input type="checkbox" id="showSame" ${showSame ? 'checked' : ''}> Show slots that stay the same</label>
       </div>
@@ -1516,6 +1518,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
     $('actChar').addEventListener('change', (e) => { actChar[act] = e.target.value; render(); });
     if ($('actMap')) $('actMap').addEventListener('change', (e) => { actMap[act] = e.target.value; render(); });
     $('galleryChip').addEventListener('change', (e) => { galleryChip = e.target.checked; try { localStorage.setItem('sgc:galleryChip', galleryChip ? '1' : '0'); } catch (x) {} render(); });
+    $('minmax').addEventListener('change', (e) => { minmax = e.target.checked; try { localStorage.setItem('sgc:minmax', minmax ? '1' : '0'); } catch (x) {} render(); });
     $('noWorn').addEventListener('change', (e) => { noWorn = e.target.checked; try { localStorage.setItem('sgc:noWorn', noWorn ? '1' : '0'); } catch (x) {} render(); });
     $('showSame').addEventListener('change', (e) => { showSame = e.target.checked; try { localStorage.setItem('sgc:showSame', showSame ? '1' : '0'); } catch (x) {} render(); });
     if (char && !res) runActivity(act, char).then(() => { if (current === act && actChar[act] === char) render(); });
