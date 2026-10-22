@@ -4,7 +4,7 @@
 // formula for that activity, run on a copy of the character with the swapped loadout.
 import { parseData } from '@parsers/index';
 import { getDropRate, getAfkGain } from '@parsers/character';
-import { getSkillEfficiency } from '@parsers/efficiency';
+import { getSkillEfficiency, allProwess } from '@parsers/efficiency';
 import { getMaxDamage } from '@parsers/damage';
 import { getItemCapacity } from '@parsers/misc';
 import { getPowerType } from '@parsers/powerTypes';
@@ -75,6 +75,22 @@ ACTIVITIES.kph = {
   prepare: () => ({ map: GMUSH, picked: true }),
   parts: (c, chars, A, ctx) => { const { p } = fightAt(c, chars, A, ctx.map); return { 'Kills per hour': p.finalKillsPerHour }; },
   value(c, chars, A, ctx) { return this.parts(c, chars, A, ctx)['Kills per hour']; },
+};
+
+// Cooking ladles while AFK in the W4 town kitchen. Ladles/day = 15 × (cooking efficiency / 1000)^(0.25 + prowess)
+// × cooking AFK gains (Corgan's idleon-research-optimizer, cooking-ladle.js). The game floors the efficiency part
+// to whole steps of 15; the search uses it unfloored so every gain shows, which at your efficiency is the same.
+ACTIVITIES.ladles = {
+  label: 'Cooking Ladles', sub: 'AFK · W4 kitchen', unit: '',
+  prepare: (c, chars, A) => { try { return { pi: getMaxDamage(c, chars, A) }; } catch (e) { return { pi: undefined }; } },
+  parts: (c, chars, A, ctx) => {
+    const v = { ...c, afkType: 'COOKING' }; const cs = chars.map((x) => (x.name === c.name ? v : x));
+    const eff = getSkillEfficiency('cooking', v, cs, A, ctx?.pi)?.value || 0;
+    let prowess = 0; try { prowess = Math.max(0, Math.min(0.1, allProwess(v, A) || 0)); } catch (e) {}
+    const afk = getAfkGain(v, cs, A)?.afkGains || 0;
+    return { 'Cooking efficiency': eff, Prowess: prowess, 'AFK gains': afk };
+  },
+  value(c, chars, A, ctx) { const q = this.parts(c, chars, A, ctx); return 15 * Math.max(1, Math.pow(q['Cooking efficiency'] / 1000, 0.25 + q.Prowess)) * q['AFK gains']; },
 };
 
 // Sampling (shown on the sampling tabs, not as activity tabs): the sample grows one to one with AFK gains
