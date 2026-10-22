@@ -51,7 +51,13 @@ ACTIVITIES.classXp = {
     }
     return { map: best || EXP_MAPS[0], picked: !!opts.map };
   },
-  parts: (c, chars, A, ctx) => { const { v, cs, p } = fightAt(c, chars, A, ctx.map); return { 'Kills per hour': p.finalKillsPerHour, 'Class EXP multi': getClassExpMulti(v, A, cs).value }; },
+  // IdleonToolbox leaves out the "+% Class EXP Multi" cards (Eamsy Earl, Pufferblob, Kelpfish); the game multiplies
+  // by (1 + their bonus / 100) next to the "% Bonus Class EXP" gear (Corgan's idleon-research-optimizer, monster-exp.js).
+  parts: (c, chars, A, ctx) => {
+    const { v, cs, p } = fightAt(c, chars, A, ctx.map);
+    const multiCards = getCardBonusByEffect(v.cards?.equippedCards, 'Class_EXP_Multi') || 0;
+    return { 'Kills per hour': p.finalKillsPerHour, 'Class EXP multi': getClassExpMulti(v, A, cs).value * (1 + multiCards / 100) };
+  },
   partUnits: { 'Kills per hour': '', 'Class EXP multi': 'x' },
   value(c, chars, A, ctx) { const q = this.parts(c, chars, A, ctx); return q['Kills per hour'] * ctx.map.exp * q['Class EXP multi']; },
 };
@@ -636,6 +642,19 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
       const nx2 = clone(best); nx2.cards[i] = cardBase[i];
       const v2 = await value(nx2);
       if (same(v2, bestV)) { best = nx2; bestV = v2; }
+    }
+    // A slot whose new card does nothing here takes back a card the preset loses instead (it was only moved
+    // to another slot), so the edit is "swap these two" rather than "add an unrelated card".
+    for (let i = 0; i < 8; i++) {
+      if (!cardBase[i] || best.cards[i]?.cardIndex === cardBase[i].cardIndex) continue;
+      const empty = clone(best); empty.cards[i] = null;
+      if (!same(await value(empty), bestV)) continue;
+      const lost = cardBase.filter((x) => x && !best.cards.some((y) => y?.cardIndex === x.cardIndex));
+      for (const x of lost) {
+        const nx2 = clone(best); nx2.cards[i] = x;
+        const v2 = await value(nx2);
+        if (same(v2, bestV)) { best = nx2; bestV = v2; break; }
+      }
     }
   }
   // Prayers: keep what is there, take out only what hurts, and put new prayers into free or freed slots first,
