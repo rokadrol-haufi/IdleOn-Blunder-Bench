@@ -181,6 +181,7 @@ tr.section td .src-ctx { font-family: var(--font-body); font-weight: 400; }
 @media (prefers-reduced-motion: reduce) { .act-run .meter i { animation: none; width: 100%; opacity: 0.5; } }
 .acttable td { vertical-align: middle; }
 .slot.txt { font-size: 0.7rem; color: var(--muted); }
+.tab .wip { font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.05em; border-radius: 4px; padding: 1px 4px; background: var(--gap-soft); color: var(--gap); vertical-align: 2px; }
 table.slots td.multi { position: relative; }
 .act-boards .setup-groups { flex-wrap: wrap; overflow-x: visible; }
 table.slots td.sheet { border-style: dashed; border-color: var(--accent); }
@@ -363,7 +364,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
 
   // The save comes from the shared Account page (assets/site.js). The analysis takes ~10 s, so it is cached per save.
   const CACHE_VERSION = 'v10-' + BENCH.createdAt;
-  const ACT_CACHE = 'act-v20';
+  const ACT_CACHE = 'act-v21';
   const loadActCache = async () => {
     try { const c = await window.IdleonTools.cache.get('companion-activities', saveId, ACT_CACHE); if (c) for (const [k, v] of Object.entries(c)) actResults.set(k, v); } catch (e) {}
   };
@@ -396,7 +397,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
   // Tabs --------------------------------------------------------------------
   const renderTabs = () => {
     $('tabs').innerHTML = SKILL_ORDER.map((s) => `<button type="button" class="tab" role="tab" id="tab-${s}" aria-selected="${s === current}" data-skill="${s}"><span class="t1">${SKILL_META[s].tab}</span><span class="t2">${SKILL_META[s].sub}</span></button>`).join('');
-    $('actTabs').innerHTML = Object.entries(ACTS).filter(([, a]) => !a.hidden).map(([k, a]) => `<button type="button" class="tab" role="tab" id="tab-${k}" aria-selected="${k === current}" data-skill="${k}"><span class="t1">${esc(a.label)}</span><span class="t2">${esc(a.sub)}</span></button>`).join('');
+    $('actTabs').innerHTML = Object.entries(ACTS).filter(([, a]) => !a.hidden).map(([k, a]) => `<button type="button" class="tab" role="tab" id="tab-${k}" aria-selected="${k === current}" data-skill="${k}"><span class="t1">${esc(a.label)}${a.wip ? ' <span class="wip">WIP</span>' : ''}</span><span class="t2">${esc(a.sub)}</span></button>`).join('');
     document.querySelectorAll('#tabs .tab, #actTabs .tab').forEach((b) => b.addEventListener('click', () => { current = b.dataset.skill; openRows.clear(); try { history.replaceState(null, '', '#' + current); } catch (e) {} render(); }));
   };
 
@@ -1506,9 +1507,10 @@ const ACT_ICONS = /*__ACTICONS__*/;
     const char = actChar[act] || null;
     const res = char ? actResults.get(actKey(act, char)) : null;
     panel.innerHTML = `
+      ${meta.wip ? '<div class="callout warn"><strong>Work in progress:</strong> this tab has not been checked against the game yet. Compare the suggestions with what you see in game before trusting them.</div>' : ''}
       <div class="controls">
         <div class="field"><label for="actChar">Character</label><select id="actChar">${char ? '' : '<option value="" selected disabled>Pick a character…</option>'}${chars.map((c) => `<option value="${esc(c.name)}" ${c.name === char ? 'selected' : ''}>${esc(c.name)} · ${esc(pretty(c.cls))} · lv ${c.level}</option>`).join('')}</select></div>
-        ${meta.maps ? `<div class="field"><label for="actMap">Map</label><select id="actMap"><option value="">Best for this character</option>${meta.maps.map((m) => `<option value="${m.index}" ${String(actMap[act] ?? '') === String(m.index) ? 'selected' : ''}>${esc(m.name)} · ${esc(m.mob)} · ${fmt(m.exp)} EXP</option>`).join('')}</select></div>` : ''}
+        ${meta.maps ? `<div class="field"><label for="actMap">Map</label><select id="actMap"><option value="">Best for this character</option>${meta.maps.map((m) => `<option value="${m.index}" ${String(actMap[act] ?? '') === String(m.index) ? 'selected' : ''}>${esc(m.name)} · ${esc(m.mob)} · ${m.note ? esc(m.note) : fmt(m.exp) + ' EXP'}</option>`).join('')}</select></div>` : ''}
         <label class="check" for="galleryChip" title="One character with the Silkrode Motherboard checks the gallery last, so every character gets its gallery bonus"><input type="checkbox" id="galleryChip" ${galleryChip ? 'checked' : ''}> Gallery chip trick</label>
         <label class="check" for="minmax" title="Also show swaps and slots worth less than 0.01%"><input type="checkbox" id="minmax" ${minmax ? 'checked' : ''}> Full min-max</label>
         <label class="check" for="noWorn"><input type="checkbox" id="noWorn" ${noWorn ? 'checked' : ''}> Don't take gear other characters wear</label>

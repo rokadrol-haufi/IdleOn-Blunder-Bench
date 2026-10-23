@@ -3,7 +3,13 @@
 // best-in-slot setup from the game's full item list. The value of a setup is always IdleonToolbox's own
 // formula for that activity, run on a copy of the character with the swapped loadout.
 import { parseData } from '@parsers/index';
-import { getDropRate, getAfkGain } from '@parsers/character';
+import { getDropRate, getAfkGain, getSkillExpMulti, getCashMulti, getPlayerCrystalChance } from '@parsers/character';
+import { getStatsFromGear } from '@parsers/items';
+import { getObolsBonus } from '@parsers/obols';
+import { getMealsBonusByEffectOrStat } from '@parsers/world-4/cooking';
+import { getPlayerLabChipBonus } from '@parsers/world-4/lab';
+import { getBubbleBonus } from '@parsers/world-2/alchemy';
+import { getPostOfficeBonus } from '@parsers/world-3/postoffice';
 import { getSkillEfficiency, allProwess } from '@parsers/efficiency';
 import { getMaxDamage } from '@parsers/damage';
 import { getItemCapacity } from '@parsers/misc';
@@ -16,7 +22,7 @@ import { isGalleryActive, getTrophyBonuses, getNametagBonuses } from '@parsers/w
 import { getPrayerBonusAndCurse } from '@parsers/world-3/prayers';
 import { isHatRackActive } from '@parsers/world-3/hatRack';
 import { getLegendTalentBonus } from '@parsers/world-7/legendTalents';
-import { items as ITEMS, classPromotions, slab as SLAB, monsters as MONSTERS, mapEnemiesArray, mapNames } from '@website-data';
+import { items as ITEMS, classPromotions, slab as SLAB, monsters as MONSTERS, mapEnemiesArray, mapNames, monsterDrops as MONSTER_DROPS, bonuses as BONUSES } from '@website-data';
 import { getClassExpMulti } from '@parsers/character';
 
 // IdleonToolbox looks up the Chaotic Troll card (+% All Skill Efficiency) by its rawName "Boss4B" where it should
@@ -93,6 +99,97 @@ ACTIVITIES.ladles = {
   value(c, chars, A, ctx) { const q = this.parts(c, chars, A, ctx); return 15 * Math.max(1, Math.pow(q['Cooking efficiency'] / 1000, 0.25 + q.Prowess)) * q['AFK gains']; },
 };
 
+/* Work in progress: not checked against the game yet (wip: true shows a WIP flag on the tab). ------------- */
+const mapInfo = (i) => { const mon = mapEnemiesArray?.[i]; const m = MONSTERS?.[mon]; return m ? { index: i, monster: mon, name: String(mapNames?.[i] || mon).replace(/_/g, ' '), mob: String(m.Name || mon).replace(/_/g, ' '), exp: m.ExpGiven || 0, hp: m.MonsterHPTotal } : null; };
+const coinRow = (mon) => (MONSTER_DROPS?.[mon] || []).find((d) => d?.rawName === 'COIN');
+const FIGHT_MAPS = (mapEnemiesArray || []).map((mon, i) => { const m = MONSTERS?.[mon]; return m && m.AFKtype === 'FIGHTING' && m.Type === 'Monster' && !/Colosseum|Unused/i.test(mapNames?.[i] || '') ? i : null; }).filter((i) => i != null);
+// Active: no AFK rate. Kills the character makes per hour on the map while you watch, times survivability.
+const activeKills = (p) => (p.killsPerHour || 0) * ((p.survivability ?? 100) / 100);
+const bestMapFor = (maps, score) => (c, chars, A, opts = {}) => {
+  let best = maps.find((m) => m.index === opts.map) || null;
+  if (!best) { let bv = -1; for (const mp of maps) { try { const v = score(c, chars, A, mp, opts); if (v > bv) { bv = v; best = mp; } } catch (e) {} } }
+  return { map: best || maps[0], picked: !!opts.map, data: opts.data };
+};
+const fightActive = (c, chars, A, mp) => { const v = { ...c, mapIndex: mp.index, targetMonster: mp.monster, afkType: 'FIGHTING' }; const cs = chars.map((x) => (x.name === c.name ? v : x)); return { v, cs, p: getMaxDamage(v, cs, A) }; };
+
+ACTIVITIES.trapEff = {
+  label: 'Trapping Efficiency', sub: 'Trapping efficiency', unit: '', wip: true,
+  prepare: (c, chars, A) => { try { return { pi: getMaxDamage(c, chars, A) }; } catch (e) { return {}; } },
+  parts: (c, chars, A, ctx) => ({ 'Trapping efficiency': getSkillEfficiency('trapping', c, chars, A, ctx?.pi)?.value || 0 }),
+  value(c, chars, A, ctx) { return this.parts(c, chars, A, ctx)['Trapping efficiency']; },
+};
+ACTIVITIES.trapExp = {
+  label: 'Trapping EXP', sub: 'Trapping EXP multi', unit: '', wip: true,
+  prepare: (c, chars, A) => { try { return { pi: getMaxDamage(c, chars, A) }; } catch (e) { return {}; } },
+  parts: (c, chars, A, ctx) => ({ 'Trapping EXP multi': getSkillExpMulti('trapping', c, chars, A, ctx?.pi)?.value || 0 }),
+  value(c, chars, A, ctx) { return this.parts(c, chars, A, ctx)['Trapping EXP multi']; },
+};
+ACTIVITIES.lab = {
+  label: 'Lab', sub: 'AFK · lab EXP', unit: '', wip: true,
+  prepare: (c, chars, A) => { try { return { pi: getMaxDamage(c, chars, A) }; } catch (e) { return {}; } },
+  parts: (c, chars, A, ctx) => {
+    const v = { ...c, afkType: 'LABORATORY' }; const cs = chars.map((x) => (x.name === c.name ? v : x));
+    return { 'Lab EXP multi': getSkillExpMulti('laboratory', v, cs, A, ctx?.pi)?.value || 0, 'AFK gains': getAfkGain(v, cs, A)?.afkGains || 0 };
+  },
+  value(c, chars, A, ctx) { const q = this.parts(c, chars, A, ctx); return q['Lab EXP multi'] * q['AFK gains']; },
+};
+// Crystals: Frogs and Beans for Zenith clusters, or the map you pick (each world's crystal drops its statues).
+// The crystal mob of each world drops that world's statues; drop rate raises those drops.
+const statuesOf = (w) => [...new Set((MONSTER_DROPS?.['Crystal' + w] || []).filter((d) => /Statue/.test(d?.rawName || '')).map((d) => String(ITEMS?.[d.rawName]?.displayName || '').replace(/_Statue$/, '').replace(/_/g, ' ')))].join(', ');
+const CRYSTAL_MAPS = [2, 14, ...[1, 2, 3, 4, 5, 6].map((w) => FIGHT_MAPS.find((i) => i >= 50 * w))].filter((i) => i != null).map((i) => {
+  const m = mapInfo(i); if (!m) return null; const w = i >= 300 ? 6 : Math.floor(i / 50);
+  return { ...m, note: 'statues: ' + statuesOf(w) };
+}).filter(Boolean);
+const crystalScore = (c, chars, A, mp, ctx) => {
+  const { v, cs, p } = fightActive(c, chars, A, mp);
+  let ch = 0; try { ch = getPlayerCrystalChance(v, A, ctx?.data)?.effectiveValue || 0; } catch (e) {}
+  return activeKills(p) * ch * (getDropRate(v, A, cs)?.dropRate || 1);
+};
+ACTIVITIES.crystal = {
+  label: 'Crystal Farm', sub: 'Active · crystals per hour', unit: '', wip: true, slow: true, maps: CRYSTAL_MAPS.slice(0, 2).concat(CRYSTAL_MAPS.slice(2)),
+  prepare: (c, chars, A, opts = {}) => { const mp = CRYSTAL_MAPS.find((m) => m.index === opts.map) || CRYSTAL_MAPS[0]; return { map: mp, picked: true, data: opts.data }; },
+  value(c, chars, A, ctx) { return crystalScore(c, chars, A, ctx.map, ctx); },
+};
+// Money: coins per hour = kills × coin chance × coins per drop × coin multi.
+const MONEY_MAPS = FIGHT_MAPS.map(mapInfo).filter((m) => m && coinRow(m.monster)).sort((a, b) => (coinRow(b.monster).quantity * coinRow(b.monster).chance) - (coinRow(a.monster).quantity * coinRow(a.monster).chance)).slice(0, 8);
+const moneyScore = (c, chars, A, mp) => { const { v, cs, p } = fightActive(c, chars, A, mp); const r = coinRow(mp.monster); return activeKills(p) * (r?.chance || 0) * (r?.quantity || 0) * (getCashMulti(v, A, cs, p)?.cashMulti || 0); };
+ACTIVITIES.money = {
+  label: 'Money Farm', sub: 'Active · coins per hour', unit: '', wip: true, slow: true, maps: MONEY_MAPS,
+  prepare: bestMapFor(MONEY_MAPS, moneyScore),
+  value(c, chars, A, ctx) { return moneyScore(c, chars, A, ctx.map); },
+};
+// Active class EXP: the same EXP multi as the AFK tab, with active kills instead of AFK kills.
+ACTIVITIES.activeXp = {
+  label: 'Active Class XP', sub: 'Active · class EXP per hour', unit: '', wip: true, slow: true, maps: EXP_MAPS,
+  prepare: bestMapFor(EXP_MAPS, (c, chars, A, mp) => { const { v, cs, p } = fightActive(c, chars, A, mp); return activeKills(p) * mp.exp * getClassExpMulti(v, A, cs).value; }),
+  value(c, chars, A, ctx) {
+    const { v, cs, p } = fightActive(c, chars, A, ctx.map);
+    const multiCards = getCardBonusByEffect(v.cards?.equippedCards, 'Class_EXP_Multi') || 0;
+    const setMulti = v.cards?.cardSet?.rawName === 'CardSet10' ? Number(v.cards.cardSet.bonus) || 0 : 0;
+    return activeKills(p) * ctx.map.exp * getClassExpMulti(v, A, cs).value * (1 + multiCards / 100) * (1 + setMulti / 100);
+  },
+};
+// Emperor boss: damage per second = expected damage per hit (mastery, crits, hit chance against the Emperor)
+// ÷ time between attacks (weapon speed and attack speed, the game's kill-rate formula).
+const EMPEROR = { index: -1, monster: 'Boss6A', name: 'Emperor', mob: 'Emperor' };
+const attackWait = (c, A, mainStat) => {
+  const eq = getStatsFromGear(c, 56, A)?.value || 0, ob = getObolsBonus(c?.obols, BONUSES?.etcBonuses?.[56]) || 0;
+  const meal = getMealsBonusByEffectOrStat(A, null, 'AtkSpd') || 0, chip = getPlayerLabChipBonus(c, A, 4) || 0;
+  const bub = getBubbleBonus(A, 'HYPERSWIFT', false, mainStat === 'wisdom') || 0, po = getPostOfficeBonus(c?.postOffice, 'Deaths_Storage_Unit', 1) || 0;
+  const speed = c?.equipment?.[1]?.Speed || 0;
+  return Math.max(0.1, (1 + (10 - speed) / 5) / (1 + (eq + ob + meal + chip + bub + po) / 100));
+};
+ACTIVITIES.emperor = {
+  label: 'Emperor Boss', sub: 'Active · damage per second', unit: '', wip: true, slow: true,
+  value(c, chars, A) {
+    const v = { ...c, targetMonster: EMPEROR.monster }; const cs = chars.map((x) => (x.name === c.name ? v : x));
+    const p = getMaxDamage(v, cs, A);
+    const hit = p.maxDamage * (p.mastery + (1 - p.mastery) / 2) * (1 + (p.critDamage - 1) * (p.critChance / 100)) * (p.hitChance / 100);
+    const main = { WARRIOR: 'strength', ARCHER: 'agility', MAGE: 'wisdom' }[familyOf(c.class)] || 'luck';
+    return hit / attackWait(v, A, main);
+  },
+};
+
 // Sampling (shown on the sampling tabs, not as activity tabs): the sample grows one to one with AFK gains
 // and with about efficiency^0.35. Max HP / MP stay as the character has them now.
 const SAMPLE_AFK = { mining: 'MINING', chopping: 'CHOPPIN', catching: 'CATCHING', fishing: 'FISHING' };
@@ -117,7 +214,7 @@ export const parseSave = (raw) => {
     let arr = data?.['Prayers_' + i]; try { if (typeof arr === 'string') arr = JSON.parse(arr); } catch (e) { arr = null; }
     if (Array.isArray(arr)) arr.forEach((x, k) => { if (x !== -1 && x != null) prayerSlots = Math.max(prayerSlots, k + 1); });
   }
-  return { account: parsed.account ?? parsed.accountData, characters: parsed.characters ?? parsed.charactersData, prayerSlots };
+  return { account: parsed.account ?? parsed.accountData, characters: parsed.characters ?? parsed.charactersData, prayerSlots, data };
 };
 
 /* Item rules ------------------------------------------------------------------------------------ */
@@ -303,7 +400,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   const notes = [];
   // Gains below 0.01% are dropped unless the page asks for a full min-max.
   const SMALL = opts.minmax ? 1e-9 : 1e-4;
-  const actCtx = act.prepare ? act.prepare(c, C, A, opts) : null;
+  const actCtx = act.prepare ? act.prepare(c, C, A, { ...opts, data: P.data }) : null;
   const t0 = Date.now();
   let evals = 0, lastYield = Date.now();
 
