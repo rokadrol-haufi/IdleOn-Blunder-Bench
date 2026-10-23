@@ -15,6 +15,7 @@ fi
 git -C "$TB" fetch --depth 1 origin "$TOOLBOX_COMMIT" 2>/dev/null || git -C "$TB" fetch origin
 git -C "$TB" checkout -q "$TOOLBOX_COMMIT"
 (cd "$TB" && npm install --ignore-scripts --no-audit --no-fund --legacy-peer-deps)
+"$ROOT/scripts/it-fixes.sh" "$TB"
 
 # 1. Bundle IdleonToolbox's parser + the efficiency entry point for the browser.
 rm -rf "$TB/kimgap" && cp -r "$ROOT/src/kimgap" "$TB/kimgap"
