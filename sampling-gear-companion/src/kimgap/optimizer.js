@@ -32,7 +32,7 @@ export const fixCards = (list) => (Array.isArray(list) ? list.map((x) => (x?.raw
 /* Activities ------------------------------------------------------------------------------------ */
 export const ACTIVITIES = {
   rareDrops: {
-    label: 'Rare Drops', sub: 'AFK · drop rate × fight AFK gains', unit: '',
+    label: 'Rare Drops', bestClass: ['Royal_Guardian'], sub: 'AFK · drop rate × fight AFK gains', unit: '',
     what: 'Score = drop rate × Fight AFK gains.',
     parts: (c, chars, A) => ({ 'Drop rate': getDropRate(c, A, chars)?.dropRate, 'Fight AFK gains': getAfkGain({ ...c, afkType: 'FIGHTING' }, chars, A)?.afkGains }),
     partUnits: { 'Drop rate': 'x', 'Fight AFK gains': '%' },
@@ -77,7 +77,7 @@ ACTIVITIES.classXp = {
 // Kills per hour on Green Mushrooms (Spore Meadows): credited kills, so kill-per-kill (multikill) gear counts.
 const GMUSH = (() => { const i = (mapEnemiesArray || []).indexOf('mushG'); return { index: i, monster: 'mushG', name: String(mapNames?.[i] || 'Spore Meadows').replace(/_/g, ' '), mob: 'Green Mushroom', exp: MONSTERS?.mushG?.ExpGiven || 0 }; })();
 ACTIVITIES.kph = {
-  label: 'Kills per hour', sub: 'AFK · Green Mushroom', unit: '', slow: true,
+  label: 'Kills per hour', bestClass: ['Death_Bringer'], sub: 'AFK · Green Mushroom', unit: '', slow: true,
   prepare: () => ({ map: GMUSH, picked: true }),
   parts: (c, chars, A, ctx) => { const { p } = fightAt(c, chars, A, ctx.map); return { 'Kills per hour': p.finalKillsPerHour }; },
   value(c, chars, A, ctx) { return this.parts(c, chars, A, ctx)['Kills per hour']; },
@@ -87,7 +87,7 @@ ACTIVITIES.kph = {
 // × cooking AFK gains (Corgan's idleon-research-optimizer, cooking-ladle.js). The game floors the efficiency part
 // to whole steps of 15; the search uses it unfloored so every gain shows, which at your efficiency is the same.
 ACTIVITIES.ladles = {
-  label: 'Cooking Ladles', sub: 'AFK · W4 kitchen', unit: '',
+  label: 'Cooking Ladles', bestClass: ['Death_Bringer', 'Blood_Berserker'], sub: 'AFK · W4 kitchen', unit: '',
   prepare: (c, chars, A) => { try { return { pi: getMaxDamage(c, chars, A) }; } catch (e) { return { pi: undefined }; } },
   parts: (c, chars, A, ctx) => {
     const v = { ...c, afkType: 'COOKING' }; const cs = chars.map((x) => (x.name === c.name ? v : x));
@@ -113,19 +113,19 @@ const bestMapFor = (maps, score) => (c, chars, A, opts = {}) => {
 const fightActive = (c, chars, A, mp) => { const v = { ...c, mapIndex: mp.index, targetMonster: mp.monster, afkType: 'FIGHTING' }; const cs = chars.map((x) => (x.name === c.name ? v : x)); return { v, cs, p: getMaxDamage(v, cs, A) }; };
 
 ACTIVITIES.trapEff = {
-  label: 'Trapping Efficiency', sub: 'Trapping efficiency', unit: '', wip: true,
+  label: 'Trapping Efficiency', bestClass: ['Wind_Walker', 'Hunter'], sub: 'Trapping efficiency', unit: '', wip: true,
   prepare: (c, chars, A) => { try { return { pi: getMaxDamage(c, chars, A) }; } catch (e) { return {}; } },
   parts: (c, chars, A, ctx) => ({ 'Trapping efficiency': getSkillEfficiency('trapping', c, chars, A, ctx?.pi)?.value || 0 }),
   value(c, chars, A, ctx) { return this.parts(c, chars, A, ctx)['Trapping efficiency']; },
 };
 ACTIVITIES.trapExp = {
-  label: 'Trapping EXP', sub: 'Trapping EXP multi', unit: '', wip: true,
+  label: 'Trapping EXP', bestClass: ['Voidwalker'], sub: 'Trapping EXP multi', unit: '', wip: true,
   prepare: (c, chars, A) => { try { return { pi: getMaxDamage(c, chars, A) }; } catch (e) { return {}; } },
   parts: (c, chars, A, ctx) => ({ 'Trapping EXP multi': getSkillExpMulti('trapping', c, chars, A, ctx?.pi)?.value || 0 }),
   value(c, chars, A, ctx) { return this.parts(c, chars, A, ctx)['Trapping EXP multi']; },
 };
 ACTIVITIES.lab = {
-  label: 'Lab', sub: 'AFK · lab EXP', unit: '', wip: true,
+  label: 'Lab', bestClass: ['Arcane_Cultist', 'Bubonic_Conjuror'], sub: 'AFK · lab EXP', unit: '', wip: true,
   prepare: (c, chars, A) => { try { return { pi: getMaxDamage(c, chars, A) }; } catch (e) { return {}; } },
   parts: (c, chars, A, ctx) => {
     const v = { ...c, afkType: 'LABORATORY' }; const cs = chars.map((x) => (x.name === c.name ? v : x));
@@ -146,7 +146,7 @@ const crystalScore = (c, chars, A, mp, ctx) => {
   return activeKills(p) * ch * (getDropRate(v, A, cs)?.dropRate || 1);
 };
 ACTIVITIES.crystal = {
-  label: 'Crystal Farm', sub: 'Active · crystals per hour', unit: '', wip: true, slow: true, maps: CRYSTAL_MAPS.slice(0, 2).concat(CRYSTAL_MAPS.slice(2)),
+  label: 'Crystal Farm', bestClass: ['Royal_Guardian'], sub: 'Active · crystals per hour', unit: '', wip: true, slow: true, maps: CRYSTAL_MAPS.slice(0, 2).concat(CRYSTAL_MAPS.slice(2)),
   prepare: (c, chars, A, opts = {}) => { const mp = CRYSTAL_MAPS.find((m) => m.index === opts.map) || CRYSTAL_MAPS[0]; return { map: mp, picked: true, data: opts.data }; },
   value(c, chars, A, ctx) { return crystalScore(c, chars, A, ctx.map, ctx); },
 };
@@ -154,7 +154,7 @@ ACTIVITIES.crystal = {
 const MONEY_MAPS = FIGHT_MAPS.map(mapInfo).filter((m) => m && coinRow(m.monster)).sort((a, b) => (coinRow(b.monster).quantity * coinRow(b.monster).chance) - (coinRow(a.monster).quantity * coinRow(a.monster).chance)).slice(0, 8);
 const moneyScore = (c, chars, A, mp) => { const { v, cs, p } = fightActive(c, chars, A, mp); const r = coinRow(mp.monster); return activeKills(p) * (r?.chance || 0) * (r?.quantity || 0) * (getCashMulti(v, A, cs, p)?.cashMulti || 0); };
 ACTIVITIES.money = {
-  label: 'Money Farm', sub: 'Active · coins per hour', unit: '', wip: true, slow: true, maps: MONEY_MAPS,
+  label: 'Money Farm', bestClass: ['Royal_Guardian'], sub: 'Active · coins per hour', unit: '', wip: true, slow: true, maps: MONEY_MAPS,
   prepare: bestMapFor(MONEY_MAPS, moneyScore),
   value(c, chars, A, ctx) { return moneyScore(c, chars, A, ctx.map); },
 };
@@ -180,7 +180,7 @@ const attackWait = (c, A, mainStat) => {
   return Math.max(0.1, (1 + (10 - speed) / 5) / (1 + (eq + ob + meal + chip + bub + po) / 100));
 };
 ACTIVITIES.emperor = {
-  label: 'Emperor Boss', sub: 'Active · damage per second', unit: '', wip: true, slow: true,
+  label: 'Boss DPS', bestClass: ['Arcane_Cultist'], sub: 'Active · damage per second', unit: '', wip: true, slow: true,
   value(c, chars, A) {
     const v = { ...c, targetMonster: EMPEROR.monster }; const cs = chars.map((x) => (x.name === c.name ? v : x));
     const p = getMaxDamage(v, cs, A);
@@ -1076,7 +1076,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     return groups.map((g) => (g.cat === 'Cards' ? g : { ...g, cells: g.cells.filter(Boolean) })).filter((g) => (g.cat === 'Cards' ? g.set || g.cards.some(Boolean) : g.cells.length));
   };
   if (opts.bisOnly) {
-    return { bisOnly: true, activity: activityKey, char: c.name, cls: c.class, level: c.level, family: fam, boards: { bis: boardFor(bis, true, relS) }, map: actCtx?.map || null, mapPicked: !!actCtx?.picked, notes, evals, ms: Date.now() - t0 };
+    return { bisOnly: true, bis: bisV, activity: activityKey, char: c.name, cls: c.class, level: c.level, family: fam, boards: { bis: boardFor(bis, true, relS) }, map: actCtx?.map || null, mapPicked: !!actCtx?.picked, notes, evals, ms: Date.now() - t0 };
   }
   const boards = { account: boardFor(best, false, relB), bis: boardFor(bis, true, relS) };
   const galleryMoves = best.trophies ? Array.from({ length: podiums }, (_, k) => ({ k, level: podiumLevel(48 + k), from: galleryRaw[16][48 + k], to: best.trophies[48 + k] })).filter((x) => x.from !== x.to).map((x) => ({ ...x, fromName: pretty(ITEMS?.['Trophy' + x.from]?.displayName), toName: pretty(ITEMS?.['Trophy' + x.to]?.displayName) })) : [];

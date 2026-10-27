@@ -80,10 +80,6 @@ button.link { border: none; background: none; padding: 0; color: var(--accent); 
 .bis-wrap { display: grid; gap: 14px; }
 .bis-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; }
 .bis-boards { display: grid; gap: 16px; }
-.famtabs { display: flex; flex-wrap: wrap; gap: 6px; }
-.famtabs button { font: 500 0.9rem/1.2 var(--font-body); border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
-.famtabs button:hover { border-color: var(--accent); }
-.famtabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .setup { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
 .setup h3 { font-size: 1.05rem; }
 .setup-groups { display: flex; flex-wrap: nowrap; gap: 10px; align-items: flex-start; overflow-x: auto; padding-bottom: 4px; }
@@ -341,7 +337,6 @@ const ACT_ICONS = /*__ACTICONS__*/;
   const ACTS = KimGap.ACTIVITIES;
   let saveText = null, saveId = null, parsedSave = null;
   const actChar = {};
-  const actFam = {}; // activity -> class family shown when no character is picked
   let showSame = false, noWorn = false, galleryChip = true, minmax = false;
   try { minmax = localStorage.getItem('sgc:minmax') === '1'; } catch (e) {}
   try { galleryChip = localStorage.getItem('sgc:galleryChip') !== '0'; } catch (e) {}
@@ -1504,24 +1499,24 @@ const ACT_ICONS = /*__ACTICONS__*/;
     setTimeout(() => runActivity(act, char.name).then(() => { if (current === skill && charChoice[skill] === char.name) render(); }), 0);
     return `<article class="setup act-run" role="status"><strong>Finding the best ${esc(skill)} sample setup from your account…</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></article>`;
   };
-  // No character picked: the theoretical best in slot per class, worked out on the highest-level character of it.
-  const FAM_LABEL = { WARRIOR: 'Warrior', ARCHER: 'Archer', MAGE: 'Mage', BEGINNER: 'Beginner' };
-  const famRefs = () => {
-    const m = {};
-    for (const c of analysis.chars) { const f = KimGap.familyOf(c.cls); if (FAM_LABEL[f] && (!m[f] || c.level > m[f].level)) m[f] = c; }
-    return Object.keys(FAM_LABEL).filter((f) => m[f]).map((f) => ({ fam: f, ref: m[f] }));
+  // No character picked: the theoretical best in slot for the activity's best class (ACTIVITIES[act].bestClass),
+  // worked out on the highest-level character of that class. No best class: the highest-level character.
+  const bisRef = (act) => {
+    const want = ACTS[act].bestClass || [];
+    const byLv = analysis.chars.slice().sort((a, b) => b.level - a.level);
+    for (const cls of want) { const c = byLv.find((x) => x.cls === cls); if (c) return { ref: c, want, has: true }; }
+    return byLv[0] ? { ref: byLv[0], want, has: !want.length } : null;
   };
-  const famPick = (act) => { const fams = famRefs(); return fams.find((x) => x.fam === actFam[act]) || fams[0] || null; };
   const bisNoChar = (act) => {
-    const fams = famRefs(), f = famPick(act);
-    if (!f) return '<p class="lede">Pick the character you want a setup for.</p>';
-    const r = actResults.get(actKey(act, 'bis:' + f.ref.name));
-    const picker = `<div class="famtabs" role="group" aria-label="Class">${fams.map((x) => `<button type="button" data-fam="${x.fam}" aria-pressed="${x.fam === f.fam}">${FAM_LABEL[x.fam]}</button>`).join('')}</div>`;
-    const body = !r ? `<div class="act-run" role="status"><strong>Working out the ${esc(FAM_LABEL[f.fam].toLowerCase())} best in slot</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></div>`
+    const b = bisRef(act);
+    if (!b) return '<p class="lede">Pick the character you want a setup for.</p>';
+    const r = actResults.get(actKey(act, 'bis:' + b.ref.name));
+    const clsTxt = b.want.length ? b.want.map(pretty).join(' / ') : 'any class';
+    const body = !r ? `<div class="act-run" role="status"><strong>Working out the best in slot for ${esc(clsTxt)}</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></div>`
       : r.error ? `<p class="err">The search stopped: ${esc(r.error)}</p>`
-      : `<section class="bis-wrap act-boards" aria-label="Theoretical best in slot"><div class="bis-boards"><article class="setup"><h3>Theoretical best in slot · ${esc(FAM_LABEL[f.fam])}</h3><div class="setup-groups">${r.boards.bis.map(actGroupHtml).join('')}</div>
-        <p class="dnote">Worked out on ${esc(r.char)} (${esc(pretty(r.cls))}, lv ${r.level})${r.map ? `, ${esc(r.map.name)}` : ''}. Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy and lab chip. Cards, prayers and star signs: the best your account has.</p></article></div></section>`;
-    return `<p class="lede">Pick a character for a setup from your account. Until then, this is the theoretical best in slot for each class.</p>${picker}${body}`;
+      : `<section class="bis-wrap act-boards" aria-label="Theoretical best in slot"><div class="bis-boards"><article class="setup"><h3>Theoretical best in slot · ${esc(b.want.length ? pretty(b.has ? r.cls : b.want[0]) : 'any class')}</h3><div class="setup-groups">${r.boards.bis.map(actGroupHtml).join('')}</div>
+        <p class="dnote">${b.want.length ? (b.has ? `Best class for this: ${esc(clsTxt)}. ` : `Best class for this: ${esc(clsTxt)}. You have none yet, so this uses your highest-level character. `) : 'No class is favoured here, so this uses your highest-level character. '}Worked out on ${esc(r.char)} (${esc(pretty(r.cls))}, lv ${r.level})${r.map ? `, ${esc(r.map.name)}` : ''}. Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy and lab chip. Cards, prayers and star signs: the best your account has.</p></article></div></section>`;
+    return `<p class="lede">Pick a character for a setup from your account. Until then, this is the theoretical best in slot.</p>${body}`;
   };
   const renderActivity = (act) => {
     TIPS = [];
@@ -1551,9 +1546,8 @@ const ACT_ICONS = /*__ACTICONS__*/;
     $('showSame').addEventListener('change', (e) => { showSame = e.target.checked; try { localStorage.setItem('sgc:showSame', showSame ? '1' : '0'); } catch (x) {} render(); });
     if (char && !res) runActivity(act, char).then(() => { if (current === act && actChar[act] === char) render(); });
     if (!char) {
-      document.querySelectorAll('.famtabs button').forEach((b) => b.addEventListener('click', () => { actFam[act] = b.dataset.fam; render(); }));
-      const f = famPick(act);
-      if (f && !actResults.get(actKey(act, 'bis:' + f.ref.name))) runActivity(act, f.ref.name, true).then(() => { if (current === act && !actChar[act] && famPick(act)?.fam === f.fam) render(); });
+      const b = bisRef(act);
+      if (b && !actResults.get(actKey(act, 'bis:' + b.ref.name))) runActivity(act, b.ref.name, true).then(() => { if (current === act && !actChar[act]) render(); });
     }
   };
 
