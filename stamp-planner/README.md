@@ -2,7 +2,7 @@
 
 A single-page tool for [Legends of IdleOn](https://www.legendsofidleon.com/) that shows which stamp upgrades you can actually do: the material cost of each stamp's next max-level upgrade, checked against the most any one of your characters can carry of that material.
 
-**Live page:** https://rokadrol-haufi.github.io/IdleOn-Tools/stamp-planner/
+**Live page:** https://rokadrol-haufi.github.io/IdleOn-Blunder-Bench/stamp-planner/
 
 ## What it shows
 

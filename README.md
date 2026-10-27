@@ -2,7 +2,7 @@
 
 Calculators for [Legends of IdleOn](https://www.legendsofidleon.com/), all in one place. Import your [IdleonToolbox](https://idleontoolbox.com/) save once on the Account page and every tool uses it; everything runs in your browser and the save is never uploaded.
 
-**Live site:** https://rokadrol-haufi.github.io/IdleOn-Tools/
+**Live site:** https://rokadrol-haufi.github.io/IdleOn-Blunder-Bench/
 
 | Page | What it does |
 | --- | --- |
