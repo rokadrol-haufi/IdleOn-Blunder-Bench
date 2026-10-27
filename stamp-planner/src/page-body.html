@@ -17,7 +17,7 @@
     <div class="fact x"><span class="k">Exalted Stamps</span><span class="v"><span id="xCount"></span> exalted</span><span class="s">The Compass multiplies their bonus by <span id="xMulti"></span>. Marked with a pink frame below.</span></div>
     <div class="fact"><span class="k">Coins</span><span class="v" id="money"></span><span class="s">Biggest coins first, 100 of one coin make the next. Coin costs above this show in red.</span></div>
     <div class="fact"><span class="k">No Stamp Left Behind</span><span class="v"><span id="nslb"></span> levels / day</span><span class="s">Free random levels. They also push stamps into higher-cost tiers over time.</span></div>
-    <div class="fact carriers"><span class="k">Best carrier per item type</span><div id="carrierList"></div><span class="s" id="bestCarrierSub"></span></div>
+    <div class="fact carriers"><div class="khead"><span class="k">Max carry per item type</span><label class="chk"><input type="checkbox" id="forceMax"> Force max carry cap</label></div><div id="carrierList"></div><span class="s" id="carrierNote"></span></div>
   </div>
 </header>
 
@@ -243,12 +243,19 @@
     $('money').innerHTML = D.meta.money != null ? coinsHtml(D.meta.money, 3) : 'import a save';
     $('xCount').textContent = D.stamps.filter(s => s.x).length;
     $('xMulti').textContent = D.meta.exaltedMulti != null ? (1 + D.meta.exaltedMulti / 100).toFixed(2) : 'its Compass bonus';
-    const cl = D.meta.carriers || [];
-    $('carrierList').innerHTML = cl.length
-      ? `<div class="carry-list">${cl.map(c => `<div class="ci"><span class="lbl">${esc(c.label)}</span><span class="cap">${fmt(c.cap)}</span><span class="who">${who(c.who)}</span></div>`).join('')}</div>`
-      : '<span class="muted">Re-import your save to see this.</span>';
-    $('bestCarrierSub').textContent = `All inventory slots (${D.meta.slots || 97}) of the character with the most capacity for that type.`;
+    renderCarriers();
     $('saveText').innerHTML = `<span class="eyebrow">Showing</span><br><strong>${esc(D.meta.save || 'Imported save')}</strong>`;
+  }
+
+  function renderCarriers(){
+    const cl = (forceMax ? D.meta.carriersMax : D.meta.carriers) || [];
+    $('forceMax').checked = forceMax;
+    $('carrierList').innerHTML = cl.length
+      ? `<table class="carry-list"><tbody>${cl.map(c => `<tr><th scope="row">${esc(c.label)}</th><td class="cap">${fmt(c.cap)}</td><td>${c.all ? '<span class="all">Everybody</span>' : who(c.who)}</td></tr>`).join('')}</tbody></table>`
+      : '<span class="muted">Re-import your save to see this.</span>';
+    $('carrierNote').textContent = forceMax
+      ? 'All slots, with Ruck Sack on, Zerg Rushogen off, every carry star sign and the Silkrode Nanochip. Used everywhere on this page.'
+      : 'All slots, with what each character has equipped now.';
   }
 
   function renderCarry(){
@@ -310,11 +317,13 @@
   });
   // Meritocracy preview: "All material costs for upgrading Stamp Max LV are }x lower" (Meritocracy bonus 14).
   // Cost × 1 / (1 + bonus%), bonus = base 100% × your Meritocracy multi. Off = the engine's own numbers.
+  let forceMax = false;
+  try { forceMax = JSON.parse(localStorage.getItem('stampPlanner') || '{}').maxCap === true; } catch (e) {}
   let meritOn = false;
   try { meritOn = JSON.parse(localStorage.getItem('stampPlanner') || '{}').merit === true; } catch (e) {}
   const meritInfo = () => (D && D.meta && D.meta.merit) || null;
   const meritFactor = () => { const m = meritInfo(); return m && meritOn && !m.active ? 1 / (1 + m.bonus / 100) : 1; };
-  const FIXED = [['now', false, 0], ['h70', false, 70], ['h90', false, 90], ['g', true, 0], ['g70', true, 70], ['g90', true, 90]];
+  const FIXED = () => [['now', false, 0], ['h70', false, 70], ['h90', false, 90], ['g', true, 0], ['g70', true, Math.min(90, Math.max(0, D.meta.h.value || 0))], ['g90', true, 90]];
   const scenario = (s, g, h, f) => {
     let n = 0, mats = 0;
     for (const p of s.pt) { const c = matCost(p * f, g, h); if (!(c <= s.cap)) break; n++; mats += c; }
@@ -325,16 +334,18 @@
     const f = meritFactor();
     const { g, h } = customVals();
     D.stamps.forEach(s => {
-      if (!s._o) s._o = { cs: { ...s.cs }, rr: { ...s.rr }, gr: { ...s.gr }, mr: { ...s.mr }, rg: s.rg, rh: s.rh };
-      if (f === 1) { Object.assign(s.cs, s._o.cs); Object.assign(s.rr, s._o.rr); Object.assign(s.gr, s._o.gr); Object.assign(s.mr, s._o.mr); s.rg = s._o.rg; s.rh = s._o.rh; }
-      else for (const [k, gg, hh] of FIXED) { const r = scenario(s, gg, hh, f); s.cs[k] = r.cost; s.rr[k] = r.n; s.mr[k] = r.mats; s.gr[k] = r.gold; }
+      if (!s._o) s._o = { cs: { ...s.cs }, rr: { ...s.rr }, gr: { ...s.gr }, mr: { ...s.mr }, rg: s.rg, rh: s.rh, cap: s.cap, w: s.w };
+      const fx = forceMax && s.cx != null;
+      s.cap = fx ? s.cx : s._o.cap; s.w = fx ? s.wx : s._o.w;
+      if (f === 1 && !fx) { Object.assign(s.cs, s._o.cs); Object.assign(s.rr, s._o.rr); Object.assign(s.gr, s._o.gr); Object.assign(s.mr, s._o.mr); s.rg = s._o.rg; s.rh = s._o.rh; }
+      else for (const [k, gg, hh] of FIXED()) { const r = scenario(s, gg, hh, f); s.cs[k] = r.cost; s.rr[k] = r.n; s.mr[k] = r.mats; s.gr[k] = r.gold; }
       s.rg = s.rr.g90; s.rh = s.rr.h90;
       const c = scenario(s, g, h, f);
       s.cs.custom = c.cost; s.rr.custom = c.n; s.mr.custom = c.mats; s.gr.custom = c.gold;
     });
   };
   function renderPlan(){
-    try { localStorage.setItem('stampPlanner', JSON.stringify({sk, cg, ch, merit: meritOn})); } catch (e) {}
+    try { localStorage.setItem('stampPlanner', JSON.stringify({sk, cg, ch, merit: meritOn, maxCap: forceMax})); } catch (e) {}
     applyScenarios();
     const k = scenKey();
     const cv = hasCustom() ? customVals() : null;
@@ -360,9 +371,10 @@
     rest.sort(cmp);
     // Next-tier fits per scenario (current tier only).
     const fitCount = (key) => D.stamps.filter(s => s.cs[key] <= s.cap).length;
-    const scen = [['now', '0%', false], ['g', '0%', true], ['g70', '70%', true], ['g90', '90%', true]];
-    $('planSummary').innerHTML = scen.map(([key, h, g]) =>
-      `<button type="button" class="fc${g ? ' gold' : ''}" data-k="${key}" aria-pressed="${key === k}" aria-label="${fitCount(key)} with Hydrogen ${h}${g ? ' and a Gilded Stamp' : ', no Gilded Stamp'}"><b>${fitCount(key)}</b><span class="lbl-st">Stamps</span><span class="fci">${h}<img class="atom" src="${IMG.Particle}" alt=""></span>${g ? `<span class="fci">+<img class="gs" src="${IMG.GildedStamp}" alt=""></span>` : ''}</button>`).join('')
+    const hNow = Math.min(90, Math.max(0, D.meta.h.value || 0));
+    const scen = [['now', '0%', false], ['g', '0%', true], ['g70', hNow + '%', true, 'Now'], ['g90', '90%', true]];
+    $('planSummary').innerHTML = scen.map(([key, h, g, tag]) =>
+      `<button type="button" class="fc${g ? ' gold' : ''}" data-k="${key}" aria-pressed="${key === k}" aria-label="${fitCount(key)} with Hydrogen ${h}${tag ? ' (your Hydrogen now)' : ''}${g ? ' and a Gilded Stamp' : ', no Gilded Stamp'}"><b>${fitCount(key)}</b><span class="lbl-st">Stamps</span>${tag ? `<span class="ctag">${tag}</span>` : ''}<span class="fci">${h}<img class="atom" src="${IMG.Particle}" alt=""></span>${g ? `<span class="fci">+<img class="gs" src="${IMG.GildedStamp}" alt=""></span>` : ''}</button>`).join('')
       + (cv ? `<button type="button" class="fc custom" data-k="custom" aria-pressed="${k === 'custom'}" aria-label="${fitCount('custom')} with a custom reduction: Hydrogen ${cv.h}%${cv.g ? ' and a Gilded Stamp' : ', no Gilded Stamp'}"><b>${fitCount('custom')}</b><span class="lbl-st">Stamps</span><span class="ctag">Custom</span><span class="fci">${cv.h}%<img class="atom" src="${IMG.Particle}" alt=""></span>${cv.g ? `<span class="fci">+<img class="gs" src="${IMG.GildedStamp}" alt=""></span>` : ''}</button>` : '');
     const groupRow = (t) => `<tr class="group"><td colspan="13">${t}</td></tr>`;
     let html = '';
@@ -427,7 +439,7 @@
     document.head.appendChild(s);
   });
   // The save comes from the shared Account page (assets/site.js); the result is cached per save.
-  const CACHE_VERSION = 'stamps-v5';
+  const CACHE_VERSION = 'stamps-v7';
   let loadSeq = 0;
   let loading = !!window.IdleonTools;
   async function loadFromAccount(){
@@ -462,6 +474,7 @@
   $('planSummary').addEventListener('click', (e) => { const btn = e.target.closest('button[data-k]'); if (btn) { sk = btn.dataset.k; renderPlan(); } });
   $('cGsImg').src = IMG.GildedStamp || ''; $('cAtomImg').src = IMG.Particle || '';
   $('meritSw').addEventListener('change', (e) => { meritOn = e.target.checked; renderAll(); });
+  $('forceMax').addEventListener('change', (e) => { forceMax = e.target.checked; renderAll(); });
   $('cGilded').addEventListener('change', (e) => { cg = e.target.checked; renderPlan(); });
   $('cHydro').addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);

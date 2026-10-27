@@ -6,16 +6,29 @@ import { getSigilBonus, getVialsBonusByEffect } from '@parsers/world-2/alchemy';
 import { getMeritocracyBonus } from '@parsers/world-2/voteBallot';
 import { getHighestCapacityCharacter } from '@parsers/misc';
 
-// Best carrier per item type (types that share one capacity are grouped). Ties go to the first character.
+// Max carry per item type, every character compared. force = IdleonToolbox's forceMaxCapacity: Ruck Sack on,
+// no Zerg Rushogen curse, every unlocked carry star sign plus the Silkrode Nanochip.
+// Types with the same capacities are merged. "Everybody" when all characters reach the top value,
+// otherwise the first character that does.
 const CARRY_TYPES = [
   ['Materials', 'bCraft'], ['Ore, Bars, Oil', 'bOre'], ['Logs, Leaves', 'bLog'], ['Fish', 'dFish'],
   ['Bugs', 'dBugs'], ['Critters', 'dCritters'], ['Souls', 'dSouls'], ['Food', 'cFood'],
   ['Quest items, Statues, Stones', 'dQuest'],
 ];
-const carriers = (account, characters) => CARRY_TYPES.map(([label, typeGen]) => {
-  const b = getHighestCapacityCharacter({ typeGen }, characters, account, false);
-  return { label, t: typeGen, cap: b?.maxCapacity ?? 0, per: b?.capacityPerSlot ?? 0, who: b?.character ?? '' };
-});
+const carriers = (account, chars, force) => {
+  const rows = CARRY_TYPES.map(([label, typeGen]) => {
+    const caps = chars.map(c => getHighestCapacityCharacter({ typeGen }, [c], account, force)?.maxCapacity ?? 0);
+    const cap = Math.max(...caps);
+    const at = caps.map((v, i) => (v === cap ? chars[i].name : null)).filter(Boolean);
+    return { label, cap, who: at.length === chars.length ? '' : at[0], all: at.length === chars.length, n: at.length, caps: caps.join() };
+  });
+  const merged = [];
+  rows.forEach(r => {
+    const m = merged.find(x => x.caps === r.caps);
+    if (m) m.label += ', ' + r.label; else merged.push({ ...r });
+  });
+  return merged.map(({ caps, ...r }) => r);
+};
 
 // Rare drops: crafting materials whose best source is a regular mob with under 1% drop chance
 // (chests excluded), e.g. Glass Shard from Sandy Pot. These are farmed with candy.
@@ -45,9 +58,10 @@ const materialCategory = (rawName) => {
 };
 
 const CARRY = ['StampB4', 'StampB6', 'StampB8', 'StampB21', 'StampB23', 'StampC2'];
-const SCEN = [
+// 'g70' is "Gilded + the account's Hydrogen right now" (the key stays for saved page state).
+const scenarios = (hNow) => [
   ['now', false, 0], ['h70', false, 70], ['h90', false, 90],
-  ['g', true, 0], ['g70', true, 70], ['g90', true, 90],
+  ['g', true, 0], ['g70', true, hNow], ['g90', true, 90],
 ];
 // Material cost before the Gilded Stamp, Hydrogen and the vial (IdleonToolbox getMaterialCost), so the
 // page can apply any custom Gilded / Hydrogen choice itself: see matCost() in page-body.html.
@@ -76,8 +90,8 @@ const preCost = (level, s, base) => s.baseMatCost * base
 const allStamps = (account) => Object.values(account.stamps || {}).flat();
 const clean = (s) => String(s ?? '').replace(/_/g, ' ').replace(/[{}]/g, '').trim();
 
-const evalAt = (stamp, account, characters, level, gilded, red) => {
-  const ev = evaluateStamp({ ...stamp, level }, account, characters, gilded, red, false, false);
+const evalAt = (stamp, account, characters, level, gilded, red, force = false) => {
+  const ev = evaluateStamp({ ...stamp, level }, account, characters, gilded, red, force, false);
   return { cost: ev.materialCost, cap: ev.bestCharacter?.maxCapacity, who: ev.bestCharacter?.character };
 };
 
@@ -129,6 +143,7 @@ export const compute = (input) => {
     if (account?.compass?.exaltedStamps?.[tree]?.[idx]) exaltedSet.add(st.rawName);
   }));
   const cf = costFactors(account);
+  const SCEN = scenarios(Math.min(90, Math.max(0, account?.atoms?.stampReducer ?? 0)));
   const stamps = allStamps(account).filter(s => s.level > 0).map(s => {
     const cs = {}, rr = {}, gr = {}, mr = {};
     let cap = 0, w = '';
@@ -140,6 +155,7 @@ export const compute = (input) => {
       rr[k] = t; mr[k] = mats;
       gr[k] = getGoldCostToMaxLevel({ ...s, maxLevel: top + t * s.reqItemMultiplicationLevel }, account);
     }
+    const fx = evalAt(s, account, characters, s.level, true, 90, true);
     // Custom reduction and the Meritocracy preview: pre-costs of the current tier and of every tier the
     // strongest reduction (Gilded + 90% + Meritocracy) can still reach, plus one, and the coin cost to each.
     const pt = [], gt = [];
@@ -147,14 +163,14 @@ export const compute = (input) => {
       const pre = preCost(top + i * s.reqItemMultiplicationLevel, s, cf.base);
       pt.push(pre);
       gt.push(getGoldCostToMaxLevel({ ...s, maxLevel: top + i * s.reqItemMultiplicationLevel }, account));
-      if (!(matCostFrom(pre * cf.mf, true, 90, cf.vr) <= cap)) break;
+      if (!(matCostFrom(pre * cf.mf, true, 90, cf.vr) <= Math.max(cap, fx.cap ?? 0))) break;
     }
     const nextTarget = s.level < s.maxLevel ? s.maxLevel : s.level + s.reqItemMultiplicationLevel;
     return {
       r: s.rawName, n: clean(s.displayName ?? s.name), c: s.category, e: clean(s.effect),
       l: s.level, m: s.maxLevel, k: s.reqItemMultiplicationLevel,
       i: clean(s.itemReq?.name), ir: s.itemReq?.rawName, t: items?.[s.itemReq?.rawName]?.typeGen ?? '', rd: isRareDrop(s.itemReq?.rawName), mc: materialCategory(s.itemReq?.rawName), q: (s.materials?.length ?? 0) > 0,
-      o: s.ownedMats ?? 0, cap, w, cs, p0: preCost(s.level, s, cf.base), pt, gt,
+      o: s.ownedMats ?? 0, cap, w, cx: fx.cap ?? cap, wx: fx.who ?? w, cs, p0: preCost(s.level, s, cf.base), pt, gt,
       rg: rr.g90, rh: rr.h90, rr, gr, mr,
       gn: getGoldCostToMaxLevel({ ...s, maxLevel: nextTarget }, account), nt: nextTarget,
       cy: CARRY.includes(s.rawName),
@@ -173,7 +189,8 @@ export const compute = (input) => {
       money: account?.currencies?.rawMoney ?? 0,
       exaltedMulti: getExaltedStampBonus(account)?.value ?? 0,
       slots: Math.max(...characters.map(c => c.inventorySlots || 0)),
-      carriers: carriers(account, characters),
+      carriers: carriers(account, characters, false),
+      carriersMax: carriers(account, characters, true),
     },
     stamps,
     sim: runSim(account, characters),
