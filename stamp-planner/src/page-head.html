@@ -49,6 +49,12 @@ header{display:flex;flex-direction:column;gap:12px}
 .fact .k{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .fact .v{font-family:var(--f-display);font-size:22px;font-weight:600}
 .fact .s{font-size:13px;color:var(--muted)}
+.fact.carriers{grid-column:1/-1}
+.carry-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px 24px;margin:6px 0 4px;font-size:13px;font-variant-numeric:tabular-nums}
+.carry-list .ci{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;padding:3px 0;border-bottom:1px solid var(--line)}
+.carry-list .lbl{color:var(--muted)}
+.carry-list .cap{font-family:var(--f-mono);font-weight:600;text-align:right}
+.carry-list .who{grid-column:1/-1;font-size:12px}
 .reducers{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px}
 .red{display:grid;grid-template-columns:64px 1fr;gap:14px;align-items:start;background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--hydro);border-radius:6px;padding:14px 16px;min-width:0}
 .red.g{border-left-color:var(--gold)}

@@ -4,6 +4,18 @@ import { evaluateStamp, getGoldCostToMaxLevel, getStampsPerDay, getExaltedStampB
 import { items, monsterDrops } from '@website-data';
 import { getSigilBonus, getVialsBonusByEffect } from '@parsers/world-2/alchemy';
 import { getMeritocracyBonus } from '@parsers/world-2/voteBallot';
+import { getHighestCapacityCharacter } from '@parsers/misc';
+
+// Best carrier per item type (types that share one capacity are grouped). Ties go to the first character.
+const CARRY_TYPES = [
+  ['Materials', 'bCraft'], ['Ore, Bars, Oil', 'bOre'], ['Logs, Leaves', 'bLog'], ['Fish', 'dFish'],
+  ['Bugs', 'dBugs'], ['Critters', 'dCritters'], ['Souls', 'dSouls'], ['Food', 'cFood'],
+  ['Quest items, Statues, Stones', 'dQuest'],
+];
+const carriers = (account, characters) => CARRY_TYPES.map(([label, typeGen]) => {
+  const b = getHighestCapacityCharacter({ typeGen }, characters, account, false);
+  return { label, t: typeGen, cap: b?.maxCapacity ?? 0, per: b?.capacityPerSlot ?? 0, who: b?.character ?? '' };
+});
 
 // Rare drops: crafting materials whose best source is a regular mob with under 1% drop chance
 // (chests excluded), e.g. Glass Shard from Sandy Pot. These are farmed with candy.
@@ -161,6 +173,7 @@ export const compute = (input) => {
       money: account?.currencies?.rawMoney ?? 0,
       exaltedMulti: getExaltedStampBonus(account)?.value ?? 0,
       slots: Math.max(...characters.map(c => c.inventorySlots || 0)),
+      carriers: carriers(account, characters),
     },
     stamps,
     sim: runSim(account, characters),
