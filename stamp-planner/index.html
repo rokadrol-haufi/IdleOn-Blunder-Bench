@@ -523,7 +523,9 @@ td.farm .sub{margin-top:4px}
   try { meritOn = JSON.parse(localStorage.getItem('stampPlanner') || '{}').merit === true; } catch (e) {}
   const meritInfo = () => (D && D.meta && D.meta.merit) || null;
   const meritFactor = () => { const m = meritInfo(); return m && meritOn && !m.active ? 1 / (1 + m.bonus / 100) : 1; };
-  const FIXED = () => [['now', false, 0], ['h70', false, 70], ['h90', false, 90], ['g', true, 0], ['g70', true, Math.min(90, Math.max(0, D.meta.h.value || 0))], ['g90', true, 90]];
+  // One day of Hydrogen: atom level × bonus per day, capped at 90%.
+  const hydroDaily = () => Math.min(90, Math.max(0, (D.meta.h.level || 0) * (D.meta.h.baseBonus || 0)));
+  const FIXED = () => [['now', false, 0], ['h70', false, 70], ['h90', false, 90], ['g', true, 0], ['g70', true, hydroDaily()], ['g90', true, 90]];
   const scenario = (s, g, h, f) => {
     let n = 0, mats = 0;
     for (const p of s.pt) { const c = matCost(p * f, g, h); if (!(c <= s.cap)) break; n++; mats += c; }
@@ -571,10 +573,10 @@ td.farm .sub{margin-top:4px}
     rest.sort(cmp);
     // Next-tier fits per scenario (current tier only).
     const fitCount = (key) => D.stamps.filter(s => s.cs[key] <= s.cap).length;
-    const hNow = Math.min(90, Math.max(0, D.meta.h.value || 0));
-    const scen = [['now', '0%', false], ['g', '0%', true], ['g70', hNow + '%', true, 'Now'], ['g90', '90%', true]];
+    const hDay = hydroDaily();
+    const scen = [['now', '0%', false], ['g', '0%', true], ['g70', hDay + '%', true, '1 day'], ['g90', '90%', true]];
     $('planSummary').innerHTML = scen.map(([key, h, g, tag]) =>
-      `<button type="button" class="fc${g ? ' gold' : ''}" data-k="${key}" aria-pressed="${key === k}" aria-label="${fitCount(key)} with Hydrogen ${h}${tag ? ' (your Hydrogen now)' : ''}${g ? ' and a Gilded Stamp' : ', no Gilded Stamp'}"><b>${fitCount(key)}</b><span class="lbl-st">Stamps</span>${tag ? `<span class="ctag">${tag}</span>` : ''}<span class="fci">${h}<img class="atom" src="${IMG.Particle}" alt=""></span>${g ? `<span class="fci">+<img class="gs" src="${IMG.GildedStamp}" alt=""></span>` : ''}</button>`).join('')
+      `<button type="button" class="fc${g ? ' gold' : ''}" data-k="${key}" aria-pressed="${key === k}" aria-label="${fitCount(key)} with Hydrogen ${h}${tag ? ' (one day of Hydrogen)' : ''}${g ? ' and a Gilded Stamp' : ', no Gilded Stamp'}"><b>${fitCount(key)}</b><span class="lbl-st">Stamps</span>${tag ? `<span class="ctag">${tag}</span>` : ''}<span class="fci">${h}<img class="atom" src="${IMG.Particle}" alt=""></span>${g ? `<span class="fci">+<img class="gs" src="${IMG.GildedStamp}" alt=""></span>` : ''}</button>`).join('')
       + (cv ? `<button type="button" class="fc custom" data-k="custom" aria-pressed="${k === 'custom'}" aria-label="${fitCount('custom')} with a custom reduction: Hydrogen ${cv.h}%${cv.g ? ' and a Gilded Stamp' : ', no Gilded Stamp'}"><b>${fitCount('custom')}</b><span class="lbl-st">Stamps</span><span class="ctag">Custom</span><span class="fci">${cv.h}%<img class="atom" src="${IMG.Particle}" alt=""></span>${cv.g ? `<span class="fci">+<img class="gs" src="${IMG.GildedStamp}" alt=""></span>` : ''}</button>` : '');
     const groupRow = (t) => `<tr class="group"><td colspan="13">${t}</td></tr>`;
     let html = '';
@@ -639,7 +641,7 @@ td.farm .sub{margin-top:4px}
     document.head.appendChild(s);
   });
   // The save comes from the shared Account page (assets/site.js); the result is cached per save.
-  const CACHE_VERSION = 'stamps-v7';
+  const CACHE_VERSION = 'stamps-v8';
   let loadSeq = 0;
   let loading = !!window.IdleonTools;
   async function loadFromAccount(){

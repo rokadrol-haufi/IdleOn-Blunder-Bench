@@ -58,7 +58,7 @@ const materialCategory = (rawName) => {
 };
 
 const CARRY = ['StampB4', 'StampB6', 'StampB8', 'StampB21', 'StampB23', 'StampC2'];
-// 'g70' is "Gilded + the account's Hydrogen right now" (the key stays for saved page state).
+// 'g70' is "Gilded + one day of Hydrogen" (atom level × bonus per day, max 90%); the key stays for saved page state.
 const scenarios = (hNow) => [
   ['now', false, 0], ['h70', false, 70], ['h90', false, 90],
   ['g', true, 0], ['g70', true, hNow], ['g90', true, 90],
@@ -143,7 +143,7 @@ export const compute = (input) => {
     if (account?.compass?.exaltedStamps?.[tree]?.[idx]) exaltedSet.add(st.rawName);
   }));
   const cf = costFactors(account);
-  const SCEN = scenarios(Math.min(90, Math.max(0, account?.atoms?.stampReducer ?? 0)));
+  const SCEN = scenarios(Math.min(90, Math.max(0, (account?.atoms?.atoms?.[0]?.level ?? 0) * (account?.atoms?.atoms?.[0]?.baseBonus ?? 0))));
   const stamps = allStamps(account).filter(s => s.level > 0).map(s => {
     const cs = {}, rr = {}, gr = {}, mr = {};
     let cap = 0, w = '';
