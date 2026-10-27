@@ -1366,15 +1366,17 @@ const ACT_BIS = /*__ACTBIS__*/;
   // Activities ----------------------------------------------------------------
   const actMap = {}; // activity -> picked map index ('' = best for the character)
   const actKey = (act, char) => `${act}|${char}|${noWorn ? 1 : 0}|${galleryChip ? 1 : 0}|${minmax ? 1 : 0}|${actMap[act] ?? ''}`;
-  // bisOnly: the theoretical best in slot for char's class (shown when no character is picked).
+  // bisOnly: the theoretical best in slot for char's class (shown when no character is picked). It is always the
+  // theoretical max: full min-max, gallery chip trick, default map; the checkboxes only change a picked character's search.
+  const bisKey = (act, char) => `${act}|bis:${char}`;
   const runActivity = (act, char, bisOnly = false) => {
-    const key = actKey(act, bisOnly ? 'bis:' + char : char);
+    const key = bisOnly ? bisKey(act, char) : actKey(act, char);
     if (actRunning) return actRunning.key === key ? actRunning.p : actRunning.p.then(() => runActivity(act, char, bisOnly));
     const p = (async () => {
       await new Promise((r) => setTimeout(r, 30));
       if (!parsedSave) { setActProgress('Reading your save…'); await new Promise((r) => setTimeout(r, 30)); parsedSave = KimGap.parseSave(saveText); }
       let ph = '';
-      const res = await KimGap.optimizeLoadout(parsedSave, char, act, { bisOnly, noWorn, galleryChip, minmax, map: actMap[act] === '' || actMap[act] == null ? undefined : Number(actMap[act]), onProgress: (x) => { if (x.phase) ph = x.phase; setActProgress(ph === 'relevance' ? `Checking which slots matter for this… ${fmt(x.evals)} setups tried` : ph === 'bis' ? `Working out the best in slot from every item in the game… ${fmt(x.evals)} setups tried` : bisOnly ? `Picking the best cards, prayers and star signs your account has… ${fmt(x.evals)} setups tried` : `Searching your account… ${fmt(x.evals)} setups tried`); } });
+      const res = await KimGap.optimizeLoadout(parsedSave, char, act, { bisOnly, noWorn, galleryChip: bisOnly || galleryChip, minmax: bisOnly || minmax, map: bisOnly || actMap[act] === '' || actMap[act] == null ? undefined : Number(actMap[act]), onProgress: (x) => { if (x.phase) ph = x.phase; setActProgress(ph === 'relevance' ? `Checking which slots matter for this… ${fmt(x.evals)} setups tried` : ph === 'bis' ? `Working out the best in slot from every item in the game… ${fmt(x.evals)} setups tried` : bisOnly ? `Picking the best cards, prayers and star signs your account has… ${fmt(x.evals)} setups tried` : `Searching your account… ${fmt(x.evals)} setups tried`); } });
       actResults.set(key, res); saveActCache();
       return res;
     })().catch((e) => { actResults.set(key, { error: String(e && e.message || e) }); }).finally(() => { actRunning = null; });
@@ -1511,10 +1513,10 @@ const ACT_BIS = /*__ACTBIS__*/;
   };
   const GEAR_NOTE = 'Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy and lab chip.';
   const bisBoardHtml = (title, boards, note) => `<section class="bis-wrap act-boards" aria-label="Theoretical best in slot"><div class="bis-boards"><article class="setup"><h3>${esc(title)}</h3><div class="setup-groups">${boards.map(actGroupHtml).join('')}</div><p class="dnote">${note}</p></article></div></section>`;
-  // The precomputed board, used while the map, Full min-max and gallery chip settings are at their defaults.
+  // The precomputed board (full min-max, gallery chip trick, default map); the checkboxes do not change it.
   const staticBis = (act) => {
     const s = ACT_BIS && ACT_BIS.acts && ACT_BIS.acts[act];
-    if (!s || !(actMap[act] == null || actMap[act] === '') || !galleryChip || minmax) return null;
+    if (!s) return null;
     const best = s.bestClass.length ? s.bestClass.map(pretty).join(' / ') : null;
     return bisBoardHtml(`Theoretical best in slot · ${best ? pretty(s.cls) : 'any class'}`, s.boards,
       `${best ? `Best class for this: ${esc(best)}. ` : 'No class is favoured here. '}Worked out on a level ${s.level} ${esc(pretty(s.cls))}${s.map ? `, ${esc(s.map.name)}` : ''}, with the cards, prayers and star signs of a late-game account (${esc(ACT_BIS.generated)}). ${GEAR_NOTE}`);
@@ -1525,7 +1527,7 @@ const ACT_BIS = /*__ACTBIS__*/;
     if (st) return lede + st;
     const b = bisRef(act);
     if (!b) return '<p class="lede">Pick the character you want a setup for.</p>';
-    const r = actResults.get(actKey(act, 'bis:' + b.ref.name));
+    const r = actResults.get(bisKey(act, b.ref.name));
     const clsTxt = b.want.length ? b.want.map(pretty).join(' / ') : 'any class';
     const body = !r ? `<div class="act-run" role="status"><strong>Working out the best in slot for ${esc(clsTxt)}</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></div>`
       : r.error ? `<p class="err">The search stopped: ${esc(r.error)}</p>`
@@ -1550,7 +1552,7 @@ const ACT_BIS = /*__ACTBIS__*/;
       ${meta.wip ? '<div class="callout warn"><strong>Work in progress:</strong> this tab has not been checked against the game yet. Compare the suggestions with what you see in game before trusting them.</div>' : ''}
       <div class="controls">
         <div class="field"><label for="actChar">Character</label><select id="actChar">${char ? '' : '<option value="" selected disabled>Pick a character…</option>'}${chars.map((c) => `<option value="${esc(c.name)}" ${c.name === char ? 'selected' : ''}>${esc(c.name)} · ${esc(pretty(c.cls))} · lv ${c.level}</option>`).join('')}</select></div>
-        ${meta.maps ? `<div class="field"><label for="actMap">Map</label><select id="actMap"><option value="">Best for this ${char ? 'character' : 'class'}</option>${meta.maps.map((m) => `<option value="${m.index}" ${String(actMap[act] ?? '') === String(m.index) ? 'selected' : ''}>${esc(m.name)} · ${esc(m.mob)} · ${m.note ? esc(m.note) : fmt(m.exp) + ' EXP'}</option>`).join('')}</select></div>` : ''}
+        ${meta.maps && char ? `<div class="field"><label for="actMap">Map</label><select id="actMap"><option value="">Best for this character</option>${meta.maps.map((m) => `<option value="${m.index}" ${String(actMap[act] ?? '') === String(m.index) ? 'selected' : ''}>${esc(m.name)} · ${esc(m.mob)} · ${m.note ? esc(m.note) : fmt(m.exp) + ' EXP'}</option>`).join('')}</select></div>` : ''}
         <label class="check" for="galleryChip" title="One character with the Silkrode Motherboard checks the gallery last, so every character gets its gallery bonus"><input type="checkbox" id="galleryChip" ${galleryChip ? 'checked' : ''}> Gallery chip trick</label>
         <label class="check" for="minmax" title="Also show swaps and slots worth less than 0.01%"><input type="checkbox" id="minmax" ${minmax ? 'checked' : ''}> Full min-max</label>
         <label class="check" for="noWorn"><input type="checkbox" id="noWorn" ${noWorn ? 'checked' : ''}> Don't take gear other characters wear</label>
@@ -1566,7 +1568,7 @@ const ACT_BIS = /*__ACTBIS__*/;
     if (char && !res) runActivity(act, char).then(() => { if (current === act && actChar[act] === char) render(); });
     if (!char) {
       const b = bisRef(act);
-      if (b && !staticBis(act) && !actResults.get(actKey(act, 'bis:' + b.ref.name))) runActivity(act, b.ref.name, true).then(() => { if (current === act && !actChar[act]) render(); });
+      if (b && !staticBis(act) && !actResults.get(bisKey(act, b.ref.name))) runActivity(act, b.ref.name, true).then(() => { if (current === act && !actChar[act]) render(); });
     }
   };
 

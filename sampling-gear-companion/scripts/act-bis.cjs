@@ -1,6 +1,6 @@
 // Precomputes the theoretical best-in-slot board of every activity tab, so the page shows it instantly.
 // Each activity is worked out on the highest-level character of its best class (ACTIVITIES[k].bestClass;
-// highest-level character overall when it has none), with the default map and settings.
+// highest-level character overall when it has none), with the default map, full min-max and the gallery chip trick.
 // Usage: node scripts/act-bis.cjs <bundle.js> <IdleonToolbox save JSON> <out.json>
 const fs = require('fs');
 global.window = global; global.self = global; global.localStorage = { getItem: () => null, setItem: () => {} };
@@ -15,7 +15,7 @@ eval(fs.readFileSync(bundle, 'utf8') + ';global.KimGap=KimGap;');
     const want = act.bestClass || [];
     const ref = want.map((cls) => byLv.find((c) => c.class === cls)).find(Boolean) || byLv[0];
     const t = Date.now();
-    const r = await KimGap.optimizeLoadout(P, ref.name, key, { bisOnly: true, generic: true });
+    const r = await KimGap.optimizeLoadout(P, ref.name, key, { bisOnly: true, generic: true, minmax: true, galleryChip: true });
     acts[key] = { cls: r.cls, level: r.level, bestClass: want, map: r.map ? { name: r.map.name, mob: r.map.mob } : null, boards: r.boards.bis };
     console.log(key.padEnd(10), ref.class.padEnd(20), ref.level, Date.now() - t, 'ms');
   }
