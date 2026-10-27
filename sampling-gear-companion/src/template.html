@@ -80,6 +80,10 @@ button.link { border: none; background: none; padding: 0; color: var(--accent); 
 .bis-wrap { display: grid; gap: 14px; }
 .bis-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; }
 .bis-boards { display: grid; gap: 16px; }
+.famtabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.famtabs button { font: 500 0.9rem/1.2 var(--font-body); border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+.famtabs button:hover { border-color: var(--accent); }
+.famtabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
 .setup { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
 .setup h3 { font-size: 1.05rem; }
 .setup-groups { display: flex; flex-wrap: nowrap; gap: 10px; align-items: flex-start; overflow-x: auto; padding-bottom: 4px; }
@@ -337,6 +341,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
   const ACTS = KimGap.ACTIVITIES;
   let saveText = null, saveId = null, parsedSave = null;
   const actChar = {};
+  const actFam = {}; // activity -> class family shown when no character is picked
   let showSame = false, noWorn = false, galleryChip = true, minmax = false;
   try { minmax = localStorage.getItem('sgc:minmax') === '1'; } catch (e) {}
   try { galleryChip = localStorage.getItem('sgc:galleryChip') !== '0'; } catch (e) {}
@@ -1364,13 +1369,15 @@ const ACT_ICONS = /*__ACTICONS__*/;
   // Activities ----------------------------------------------------------------
   const actMap = {}; // activity -> picked map index ('' = best for the character)
   const actKey = (act, char) => `${act}|${char}|${noWorn ? 1 : 0}|${galleryChip ? 1 : 0}|${minmax ? 1 : 0}|${actMap[act] ?? ''}`;
-  const runActivity = (act, char) => {
-    const key = actKey(act, char);
-    if (actRunning) return actRunning.key === key ? actRunning.p : actRunning.p.then(() => runActivity(act, char));
+  // bisOnly: the theoretical best in slot for char's class (shown when no character is picked).
+  const runActivity = (act, char, bisOnly = false) => {
+    const key = actKey(act, bisOnly ? 'bis:' + char : char);
+    if (actRunning) return actRunning.key === key ? actRunning.p : actRunning.p.then(() => runActivity(act, char, bisOnly));
     const p = (async () => {
       await new Promise((r) => setTimeout(r, 30));
       if (!parsedSave) { setActProgress('Reading your save…'); await new Promise((r) => setTimeout(r, 30)); parsedSave = KimGap.parseSave(saveText); }
-      const res = await KimGap.optimizeLoadout(parsedSave, char, act, { noWorn, galleryChip, minmax, map: actMap[act] === '' || actMap[act] == null ? undefined : Number(actMap[act]), onProgress: (x) => setActProgress(x.phase === 'relevance' ? `Checking which slots matter for this… ${fmt(x.evals)} setups tried` : x.phase === 'bis' ? `Working out the best in slot from every item in the game… ${fmt(x.evals)} setups tried` : `Searching your account… ${fmt(x.evals)} setups tried`) });
+      let ph = '';
+      const res = await KimGap.optimizeLoadout(parsedSave, char, act, { bisOnly, noWorn, galleryChip, minmax, map: actMap[act] === '' || actMap[act] == null ? undefined : Number(actMap[act]), onProgress: (x) => { if (x.phase) ph = x.phase; setActProgress(ph === 'relevance' ? `Checking which slots matter for this… ${fmt(x.evals)} setups tried` : ph === 'bis' ? `Working out the best in slot from every item in the game… ${fmt(x.evals)} setups tried` : bisOnly ? `Picking the best cards, prayers and star signs your account has… ${fmt(x.evals)} setups tried` : `Searching your account… ${fmt(x.evals)} setups tried`); } });
       actResults.set(key, res); saveActCache();
       return res;
     })().catch((e) => { actResults.set(key, { error: String(e && e.message || e) }); }).finally(() => { actRunning = null; });
@@ -1497,6 +1504,25 @@ const ACT_ICONS = /*__ACTICONS__*/;
     setTimeout(() => runActivity(act, char.name).then(() => { if (current === skill && charChoice[skill] === char.name) render(); }), 0);
     return `<article class="setup act-run" role="status"><strong>Finding the best ${esc(skill)} sample setup from your account…</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></article>`;
   };
+  // No character picked: the theoretical best in slot per class, worked out on the highest-level character of it.
+  const FAM_LABEL = { WARRIOR: 'Warrior', ARCHER: 'Archer', MAGE: 'Mage', BEGINNER: 'Beginner' };
+  const famRefs = () => {
+    const m = {};
+    for (const c of analysis.chars) { const f = KimGap.familyOf(c.cls); if (FAM_LABEL[f] && (!m[f] || c.level > m[f].level)) m[f] = c; }
+    return Object.keys(FAM_LABEL).filter((f) => m[f]).map((f) => ({ fam: f, ref: m[f] }));
+  };
+  const famPick = (act) => { const fams = famRefs(); return fams.find((x) => x.fam === actFam[act]) || fams[0] || null; };
+  const bisNoChar = (act) => {
+    const fams = famRefs(), f = famPick(act);
+    if (!f) return '<p class="lede">Pick the character you want a setup for.</p>';
+    const r = actResults.get(actKey(act, 'bis:' + f.ref.name));
+    const picker = `<div class="famtabs" role="group" aria-label="Class">${fams.map((x) => `<button type="button" data-fam="${x.fam}" aria-pressed="${x.fam === f.fam}">${FAM_LABEL[x.fam]}</button>`).join('')}</div>`;
+    const body = !r ? `<div class="act-run" role="status"><strong>Working out the ${esc(FAM_LABEL[f.fam].toLowerCase())} best in slot</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></div>`
+      : r.error ? `<p class="err">The search stopped: ${esc(r.error)}</p>`
+      : `<section class="bis-wrap act-boards" aria-label="Theoretical best in slot"><div class="bis-boards"><article class="setup"><h3>Theoretical best in slot · ${esc(FAM_LABEL[f.fam])}</h3><div class="setup-groups">${r.boards.bis.map(actGroupHtml).join('')}</div>
+        <p class="dnote">Worked out on ${esc(r.char)} (${esc(pretty(r.cls))}, lv ${r.level})${r.map ? `, ${esc(r.map.name)}` : ''}. Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy and lab chip. Cards, prayers and star signs: the best your account has.</p></article></div></section>`;
+    return `<p class="lede">Pick a character for a setup from your account. Until then, this is the theoretical best in slot for each class.</p>${picker}${body}`;
+  };
   const renderActivity = (act) => {
     TIPS = [];
     const panel = $('panel');
@@ -1510,13 +1536,13 @@ const ACT_ICONS = /*__ACTICONS__*/;
       ${meta.wip ? '<div class="callout warn"><strong>Work in progress:</strong> this tab has not been checked against the game yet. Compare the suggestions with what you see in game before trusting them.</div>' : ''}
       <div class="controls">
         <div class="field"><label for="actChar">Character</label><select id="actChar">${char ? '' : '<option value="" selected disabled>Pick a character…</option>'}${chars.map((c) => `<option value="${esc(c.name)}" ${c.name === char ? 'selected' : ''}>${esc(c.name)} · ${esc(pretty(c.cls))} · lv ${c.level}</option>`).join('')}</select></div>
-        ${meta.maps ? `<div class="field"><label for="actMap">Map</label><select id="actMap"><option value="">Best for this character</option>${meta.maps.map((m) => `<option value="${m.index}" ${String(actMap[act] ?? '') === String(m.index) ? 'selected' : ''}>${esc(m.name)} · ${esc(m.mob)} · ${m.note ? esc(m.note) : fmt(m.exp) + ' EXP'}</option>`).join('')}</select></div>` : ''}
+        ${meta.maps ? `<div class="field"><label for="actMap">Map</label><select id="actMap"><option value="">Best for this ${char ? 'character' : 'class'}</option>${meta.maps.map((m) => `<option value="${m.index}" ${String(actMap[act] ?? '') === String(m.index) ? 'selected' : ''}>${esc(m.name)} · ${esc(m.mob)} · ${m.note ? esc(m.note) : fmt(m.exp) + ' EXP'}</option>`).join('')}</select></div>` : ''}
         <label class="check" for="galleryChip" title="One character with the Silkrode Motherboard checks the gallery last, so every character gets its gallery bonus"><input type="checkbox" id="galleryChip" ${galleryChip ? 'checked' : ''}> Gallery chip trick</label>
         <label class="check" for="minmax" title="Also show swaps and slots worth less than 0.01%"><input type="checkbox" id="minmax" ${minmax ? 'checked' : ''}> Full min-max</label>
         <label class="check" for="noWorn"><input type="checkbox" id="noWorn" ${noWorn ? 'checked' : ''}> Don't take gear other characters wear</label>
         <label class="check" for="showSame"><input type="checkbox" id="showSame" ${showSame ? 'checked' : ''}> Show slots that stay the same</label>
       </div>
-      ${!char ? '<p class="lede">Pick the character you want a setup for.</p>' : res ? actResultHtml(res, act) : `<div class="act-run" role="status"><strong>Finding the best ${esc(meta.label.toLowerCase())} setup for ${esc(char)}</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></div>`}`;
+      ${!char ? bisNoChar(act) : res ? actResultHtml(res, act) : `<div class="act-run" role="status"><strong>Finding the best ${esc(meta.label.toLowerCase())} setup for ${esc(char)}</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></div>`}`;
     $('actChar').addEventListener('change', (e) => { actChar[act] = e.target.value; render(); });
     if ($('actMap')) $('actMap').addEventListener('change', (e) => { actMap[act] = e.target.value; render(); });
     $('galleryChip').addEventListener('change', (e) => { galleryChip = e.target.checked; try { localStorage.setItem('sgc:galleryChip', galleryChip ? '1' : '0'); } catch (x) {} render(); });
@@ -1524,6 +1550,11 @@ const ACT_ICONS = /*__ACTICONS__*/;
     $('noWorn').addEventListener('change', (e) => { noWorn = e.target.checked; try { localStorage.setItem('sgc:noWorn', noWorn ? '1' : '0'); } catch (x) {} render(); });
     $('showSame').addEventListener('change', (e) => { showSame = e.target.checked; try { localStorage.setItem('sgc:showSame', showSame ? '1' : '0'); } catch (x) {} render(); });
     if (char && !res) runActivity(act, char).then(() => { if (current === act && actChar[act] === char) render(); });
+    if (!char) {
+      document.querySelectorAll('.famtabs button').forEach((b) => b.addEventListener('click', () => { actFam[act] = b.dataset.fam; render(); }));
+      const f = famPick(act);
+      if (f && !actResults.get(actKey(act, 'bis:' + f.ref.name))) runActivity(act, f.ref.name, true).then(() => { if (current === act && !actChar[act] && famPick(act)?.fam === f.fam) render(); });
+    }
   };
 
   // Render ------------------------------------------------------------------

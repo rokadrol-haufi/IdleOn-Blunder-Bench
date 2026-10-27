@@ -626,22 +626,22 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   const categories = opts.categories || ['equip', 'tools', 'cards', 'cardSet', 'prayers', 'chips', 'signs', 'obols', 'gallery', 'food'];
   let cardTop = null, cardTopWide = null, cardsScanned = false;
   const boostSlots = (st) => [st.chips.some((e) => e?.chip?.index === 20) ? 0 : null, st.chips.some((e) => e?.chip?.index === 21) ? 7 : null].filter((x) => x != null);
-  const search = async (start) => {
+  const search = async (start, cats = categories, maxPass = act.slow ? 2 : 4) => {
     let st = start, cur = await value(st);
-    for (let pass = 0; pass < (act.slow ? 2 : 4); pass++) {
+    for (let pass = 0; pass < maxPass; pass++) {
       const before = cur;
-      if (categories.includes('equip')) for (let i = 0; i < EQUIP_SLOTS.length && i < st.equip.length; i++) {
+      if (cats.includes('equip')) for (let i = 0; i < EQUIP_SLOTS.length && i < st.equip.length; i++) {
         if (skipEquip(i)) continue;
         const ids = used(st); ids.delete(st.equip[i]?.id);
         const cands = undominated(equipPool.filter((p) => !ids.has(p.id) && EQUIP_SLOTS[i][1].includes(p.item.Type) && classOk(p.item, fam) && levelOk(c, p.item)));
         [st, cur] = await trySlot(st, cur, 'equip', i, cands);
       }
-      if (categories.includes('tools')) for (let i = 0; i < TOOL_SLOTS.length && i < st.tools.length; i++) {
+      if (cats.includes('tools')) for (let i = 0; i < TOOL_SLOTS.length && i < st.tools.length; i++) {
         const ids = used(st); ids.delete(st.tools[i]?.id);
         const cands = undominated(equipPool.filter((p) => !ids.has(p.id) && TOOL_SLOTS[i][1].includes(p.item.Type) && levelOk(c, p.item, TOOL_SLOTS[i][2])));
         [st, cur] = await trySlot(st, cur, 'tools', i, cands);
       }
-      if (categories.includes('cards')) {
+      if (cats.includes('cards')) {
         // Rank every card the account has once, by what it is worth in a normal (not doubled) slot.
         if (!cardTop) {
           const ranked = [];
@@ -671,7 +671,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
           if (better(val, cur)) { st = nx; cur = val; }
         }
       }
-      if (categories.includes('cardSet') && setPool.length) {
+      if (cats.includes('cardSet') && setPool.length) {
         for (const s of setPool) {
           if (s.rawName === st.cardSet?.rawName) continue;
           const nx = clone(st); nx.cardSet = s;
@@ -679,27 +679,27 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
           if (better(val, cur)) { st = nx; cur = val; }
         }
       }
-      if (categories.includes('prayers')) for (let i = 0; i < st.prayers.length; i++) {
+      if (cats.includes('prayers')) for (let i = 0; i < st.prayers.length; i++) {
         const have = new Set(st.prayers.map((p, k) => (k === i ? null : p?.name)).filter(Boolean));
         [st, cur] = await trySlot(st, cur, 'prayers', i, prayerPool.filter((p) => !have.has(p.name)));
       }
-      if (categories.includes('chips')) for (let i = 0; i < chipSlots; i++) {
+      if (cats.includes('chips')) for (let i = 0; i < chipSlots; i++) {
         const ids = used(st); ids.delete(st.chips[i]?.id);
         const mine = new Set(st.chips.map((e, k) => (k === i ? null : e?.chip?.bool1 === '1' ? e.chip.index : null)).filter((x) => x != null));
         const pool = [...myChips.filter(Boolean), ...chipPool].filter((e) => !ids.has(e.id) && !mine.has(e.chip.index));
         [st, cur] = await trySlot(st, cur, 'chips', i, pool);
       }
-      if (categories.includes('signs') && signPool.length) for (let i = 0; i < st.signs.length; i++) {
+      if (cats.includes('signs') && signPool.length) for (let i = 0; i < st.signs.length; i++) {
         const have = new Set(st.signs.map((s, k) => (k === i ? null : s?.starName)).filter(Boolean));
         [st, cur] = await trySlot(st, cur, 'signs', i, signPool.filter((s) => !have.has(s.starName)));
       }
-      if (categories.includes('obols')) for (let i = 0; i < st.obols.length; i++) {
+      if (cats.includes('obols')) for (let i = 0; i < st.obols.length; i++) {
         const slot = myObols[i]?.item; if (!slot?.shape) continue;
         const ids = used(st); ids.delete(st.obols[i]?.id);
         const pool = undominated([...myObols, ...obolPool].filter((e) => real(e.item) && !ids.has(e.id) && obolShapeOk(slot, e.item) && classOk(e.item, fam)));
         [st, cur] = await trySlot(st, cur, 'obols', i, pool);
       }
-      if (categories.includes('gallery') && st.trophies) for (let p = 48; p < 48 + podiums; p++) {
+      if (cats.includes('gallery') && st.trophies) for (let p = 48; p < 48 + podiums; p++) {
         // Swap this podium's trophy with any other trophy in the gallery, or put in one from outside.
         let bestSt = st, bestV2 = cur;
         const tried = new Set([st.trophies[p]]);
@@ -718,7 +718,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
         }
         st = bestSt; cur = bestV2;
       }
-      if (categories.includes('food')) for (let i = 0; i < st.food.length; i++) {
+      if (cats.includes('food')) for (let i = 0; i < st.food.length; i++) {
         // A slot gets a full stack (carry cap), or what is left after the other slots of the same food.
         const left = (raw) => (foodOwned[raw] || 0) - st.food.reduce((a, f, k) => a + (k !== i && f?.raw === raw ? f.amount : 0), 0);
         const other = new Set(st.food.map((f, k) => (k !== i ? f?.raw : null)).filter(Boolean));
@@ -758,7 +758,13 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   };
 
   onProgress({ evals, phase: 'account' });
-  let [best, bestV] = await search(init);
+  // bisOnly: the theoretical best in slot for this character's class, without the account search, card presets
+  // or per-change worth. Cards, card set, prayers and star signs are the best ones the account has.
+  let best, bestV, cardBase = init.cards.slice(), cardPresetInfo = null;
+  const worth = {};
+  if (opts.bisOnly) [best, bestV] = await search(init, ['cards', 'cardSet', 'prayers', 'signs'], 2);
+  else {
+  [best, bestV] = await search(init);
   [best, bestV] = await prune(best, bestV);
   // What each change is worth on its own: the best setup against the best setup with only that slot put back.
   // Card presets: use one that already is this setup, otherwise the one that already holds most of these cards.
@@ -773,7 +779,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   const exact = presets.filter((p) => same(p.value, bestV)).sort((a, b) => (b.i === curPreset) - (a.i === curPreset) || b.value - a.value)[0];
   let usePreset = exact || presets.slice().sort((a, b) => b.overlap - a.overlap || (b.i === curPreset) - (a.i === curPreset) || b.value - a.value)[0] || null;
   if (exact) { best = clone(best); best.cards = exact.cards.slice(); bestV = exact.value; }
-  const cardBase = usePreset ? usePreset.cards.slice() : init.cards.slice();
+  cardBase = usePreset ? usePreset.cards.slice() : init.cards.slice();
   if (usePreset && !exact) {
     // Keep the preset's cards where they are, so only the slots that change need touching.
     const boosted = boostSlots(best);
@@ -834,8 +840,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     const v = await value(nx);
     if (v >= bestV * (1 - 1e-9)) { best = nx; bestV = Math.max(bestV, v); }
   }
-  const cardPresetInfo = usePreset ? { current: curPreset, use: usePreset.i, exact: !!exact, overlap: usePreset.overlap, presets: presets.length } : null;
-  const worth = {};
+  cardPresetInfo = usePreset ? { current: curPreset, use: usePreset.i, exact: !!exact, overlap: usePreset.overlap, presets: presets.length } : null;
   for (let i = 0; i < 8; i++) {
     if ((best.cards[i]?.cardIndex ?? null) === (cardBase[i]?.cardIndex ?? null)) continue;
     const nx = clone(best); nx.cards[i] = cardBase[i];
@@ -851,6 +856,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
   }
   if (best.cardSet?.rawName !== init.cardSet?.rawName) { const nx = clone(best); nx.cardSet = init.cardSet; const val = await value(nx); worth.cardSet = val > 0 ? bestV / val : null; }
   if (best.talent !== init.talent) { const nx = clone(best); nx.talent = init.talent; const val = await value(nx); worth.talent = val > 0 ? bestV / val : null; }
+  }
 
   /* Theoretical best in slot: every item in the game for gear, tools, obols and food, on top of the account's best. */
   onProgress({ evals, phase: 'bis' });
@@ -958,7 +964,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     if (!(bestV > v * (1 + SMALL))) { best = nx; bestV = v; }
   }
   onProgress({ evals, phase: 'relevance' });
-  const relB = await relevance(best, bestV), relS = await relevance(bis, bisV);
+  const relB = opts.bisOnly ? {} : await relevance(best, bestV), relS = await relevance(bis, bisV);
 
   /* Report ------------------------------------------------------------------------------------------ */
   // Keychains roll their stats, so the roll is part of what to look for.
@@ -1018,7 +1024,8 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     if (it.stones) lines.push(`With ${it.stones.count} × ${pretty(ITEMS?.[it.stones.raw]?.displayName || it.stones.raw)}`);
     return { title: pretty(it.displayName || it.name || it.rawName), type: type || titleCase(it.Type || ''), lines: lines.filter(Boolean) };
   };
-  const cell = (raw, tip, nowName, where, same, extraSv = []) => (raw ? { raw, tip, same, sv: [same ? 'Already like this' : nowName ? `Now: ${nowName}` : 'Now: empty', where && !same ? `Where: ${typeof where === 'string' ? where : Object.entries(where).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => k).join(', ')}` : null, ...extraSv].filter(Boolean) } : null);
+  const plain = !!opts.bisOnly;
+  const cell = (raw, tip, nowName, where, same, extraSv = []) => (raw ? { raw, tip, same: plain ? false : same, sv: [plain ? null : same ? 'Already like this' : nowName ? `Now: ${nowName}` : 'Now: empty', where && (plain ? where === 'Craft it in the lab' : !same) ? `Where: ${typeof where === 'string' ? where : Object.entries(where).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => k).join(', ')}` : null, ...extraSv].filter(Boolean) } : null);
   const eqName = (e) => (e?.item && real(e.item) ? pretty(e.item.displayName || e.item.rawName) : null);
   const boardFor = (S, isBis, rel) => {
     const groups = [];
@@ -1068,6 +1075,9 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     // Only what does something for this activity.
     return groups.map((g) => (g.cat === 'Cards' ? g : { ...g, cells: g.cells.filter(Boolean) })).filter((g) => (g.cat === 'Cards' ? g.set || g.cards.some(Boolean) : g.cells.length));
   };
+  if (opts.bisOnly) {
+    return { bisOnly: true, activity: activityKey, char: c.name, cls: c.class, level: c.level, family: fam, boards: { bis: boardFor(bis, true, relS) }, map: actCtx?.map || null, mapPicked: !!actCtx?.picked, notes, evals, ms: Date.now() - t0 };
+  }
   const boards = { account: boardFor(best, false, relB), bis: boardFor(bis, true, relS) };
   const galleryMoves = best.trophies ? Array.from({ length: podiums }, (_, k) => ({ k, level: podiumLevel(48 + k), from: galleryRaw[16][48 + k], to: best.trophies[48 + k] })).filter((x) => x.from !== x.to).map((x) => ({ ...x, fromName: pretty(ITEMS?.['Trophy' + x.from]?.displayName), toName: pretty(ITEMS?.['Trophy' + x.to]?.displayName) })) : [];
   let galleryWorth = null;
