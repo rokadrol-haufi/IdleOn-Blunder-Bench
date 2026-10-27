@@ -7,3 +7,5 @@ Compares your 3D Printer sampling characters with the top public samplers for Co
 - Best-in-slot setups per skill with hover tooltips, and the fishing spots table.
 
 Build: `scripts/build.sh` (see the root README). No save is embedded; the page reads the save imported on the site's Account page and caches the analysis per save.
+
+The theoretical best-in-slot board of each activity tab is precomputed so it shows instantly, even before a save is imported: `node scripts/act-bis.cjs .build/bundle.js <save.json> data/act-bis.json`, then `scripts/build.sh` again. It is worked out on the highest-level character of the activity's best class in that save; only the class and level are kept, no names.

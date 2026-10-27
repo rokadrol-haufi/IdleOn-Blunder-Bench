@@ -20,6 +20,8 @@ parts = [
     ('/*__BIS__*/', read('data/bis.json')),
     ('/*__ICONS__*/', read('data/icons.json')),
     ('/*__ACTICONS__*/', read('data/act-icons.json')),
+    # Precomputed best-in-slot boards for the activity tabs (scripts/act-bis.cjs); null when missing.
+    ('/*__ACTBIS__*/', read('data/act-bis.json') if os.path.exists(os.path.join(root, 'data', 'act-bis.json')) else 'null'),
 ]
 for key, value in parts:
     assert key in t, key

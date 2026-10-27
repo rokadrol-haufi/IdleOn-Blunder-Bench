@@ -245,6 +245,8 @@ const BINP = /*__INP__*/;
 const BIS = /*__BIS__*/;
 const ICONS = /*__ICONS__*/;
 const ACT_ICONS = /*__ACTICONS__*/;
+// Theoretical best in slot per activity, precomputed at build time (scripts/act-bis.cjs).
+const ACT_BIS = /*__ACTBIS__*/;
 </script>
 <script>
 (() => {
@@ -1507,22 +1509,39 @@ const ACT_ICONS = /*__ACTICONS__*/;
     for (const cls of want) { const c = byLv.find((x) => x.cls === cls); if (c) return { ref: c, want, has: true }; }
     return byLv[0] ? { ref: byLv[0], want, has: !want.length } : null;
   };
+  const GEAR_NOTE = 'Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy and lab chip.';
+  const bisBoardHtml = (title, boards, note) => `<section class="bis-wrap act-boards" aria-label="Theoretical best in slot"><div class="bis-boards"><article class="setup"><h3>${esc(title)}</h3><div class="setup-groups">${boards.map(actGroupHtml).join('')}</div><p class="dnote">${note}</p></article></div></section>`;
+  // The precomputed board, used while the map, Full min-max and gallery chip settings are at their defaults.
+  const staticBis = (act) => {
+    const s = ACT_BIS && ACT_BIS.acts && ACT_BIS.acts[act];
+    if (!s || !(actMap[act] == null || actMap[act] === '') || !galleryChip || minmax) return null;
+    const best = s.bestClass.length ? s.bestClass.map(pretty).join(' / ') : null;
+    return bisBoardHtml(`Theoretical best in slot · ${best ? pretty(s.cls) : 'any class'}`, s.boards,
+      `${best ? `Best class for this: ${esc(best)}. ` : 'No class is favoured here. '}Worked out on a level ${s.level} ${esc(pretty(s.cls))}${s.map ? `, ${esc(s.map.name)}` : ''}, with the cards, prayers and star signs of a late-game account (${esc(ACT_BIS.generated)}). ${GEAR_NOTE}`);
+  };
   const bisNoChar = (act) => {
+    const lede = '<p class="lede">Pick a character for a setup from your account. Until then, this is the theoretical best in slot.</p>';
+    const st = staticBis(act);
+    if (st) return lede + st;
     const b = bisRef(act);
     if (!b) return '<p class="lede">Pick the character you want a setup for.</p>';
     const r = actResults.get(actKey(act, 'bis:' + b.ref.name));
     const clsTxt = b.want.length ? b.want.map(pretty).join(' / ') : 'any class';
     const body = !r ? `<div class="act-run" role="status"><strong>Working out the best in slot for ${esc(clsTxt)}</strong><div class="meter" aria-hidden="true"><i></i></div><span id="actProg" class="dnote">Starting…</span></div>`
       : r.error ? `<p class="err">The search stopped: ${esc(r.error)}</p>`
-      : `<section class="bis-wrap act-boards" aria-label="Theoretical best in slot"><div class="bis-boards"><article class="setup"><h3>Theoretical best in slot · ${esc(b.want.length ? pretty(b.has ? r.cls : b.want[0]) : 'any class')}</h3><div class="setup-groups">${r.boards.bis.map(actGroupHtml).join('')}</div>
-        <p class="dnote">${b.want.length ? (b.has ? `Best class for this: ${esc(clsTxt)}. ` : `Best class for this: ${esc(clsTxt)}. You have none yet, so this uses your highest-level character. `) : 'No class is favoured here, so this uses your highest-level character. '}Worked out on ${esc(r.char)} (${esc(pretty(r.cls))}, lv ${r.level})${r.map ? `, ${esc(r.map.name)}` : ''}. Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy and lab chip. Cards, prayers and star signs: the best your account has.</p></article></div></section>`;
-    return `<p class="lede">Pick a character for a setup from your account. Until then, this is the theoretical best in slot.</p>${body}`;
+      : bisBoardHtml(`Theoretical best in slot · ${b.want.length ? pretty(b.has ? r.cls : b.want[0]) : 'any class'}`, r.boards.bis,
+        `${b.want.length ? (b.has ? `Best class for this: ${esc(clsTxt)}. ` : `Best class for this: ${esc(clsTxt)}. You have none yet, so this uses your highest-level character. `) : 'No class is favoured here, so this uses your highest-level character. '}Worked out on ${esc(r.char)} (${esc(pretty(r.cls))}, lv ${r.level})${r.map ? `, ${esc(r.map.name)}` : ''}. ${GEAR_NOTE} Cards, prayers and star signs: the best your account has.`);
+    return lede + body;
   };
   const renderActivity = (act) => {
     TIPS = [];
     const panel = $('panel');
-    if (!saveText) { panel.innerHTML = '<p class="lede">Import a save on the Account page to search it.</p>'; return; }
     const meta = ACTS[act];
+    if (!saveText) {
+      const st = staticBis(act);
+      panel.innerHTML = `${meta.wip ? '<div class="callout warn"><strong>Work in progress:</strong> this tab has not been checked against the game yet.</div>' : ''}<p class="lede">Import a save on the Account page to get a setup from your own account.${st ? ' Until then, this is the theoretical best in slot.' : ''}</p>${st || ''}`;
+      return;
+    }
     const chars = analysis.chars;
     if (actChar[act] && !chars.some((c) => c.name === actChar[act])) delete actChar[act];
     const char = actChar[act] || null;
@@ -1547,7 +1566,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
     if (char && !res) runActivity(act, char).then(() => { if (current === act && actChar[act] === char) render(); });
     if (!char) {
       const b = bisRef(act);
-      if (b && !actResults.get(actKey(act, 'bis:' + b.ref.name))) runActivity(act, b.ref.name, true).then(() => { if (current === act && !actChar[act]) render(); });
+      if (b && !staticBis(act) && !actResults.get(actKey(act, 'bis:' + b.ref.name))) runActivity(act, b.ref.name, true).then(() => { if (current === act && !actChar[act]) render(); });
     }
   };
 
@@ -1555,6 +1574,7 @@ const ACT_ICONS = /*__ACTICONS__*/;
   const render = () => {
     renderTabs();
     const panel = $('panel');
+    if (!analysis && isAct(current) && !saveText) { const n = document.querySelector('section.notes'); if (n) n.hidden = true; renderActivity(current); return; }
     if (!analysis) { panel.innerHTML = '<p class="lede">Import a save to compare it with the top samplers.</p>'; return; }
     const notesEl = document.querySelector('section.notes'); if (notesEl) notesEl.hidden = isAct(current);
     if (isAct(current)) { renderActivity(current); return; }

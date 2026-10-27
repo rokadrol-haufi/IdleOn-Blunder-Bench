@@ -1025,7 +1025,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     return { title: pretty(it.displayName || it.name || it.rawName), type: type || titleCase(it.Type || ''), lines: lines.filter(Boolean) };
   };
   const plain = !!opts.bisOnly;
-  const cell = (raw, tip, nowName, where, same, extraSv = []) => (raw ? { raw, tip, same: plain ? false : same, sv: [plain ? null : same ? 'Already like this' : nowName ? `Now: ${nowName}` : 'Now: empty', where && (plain ? where === 'Craft it in the lab' : !same) ? `Where: ${typeof where === 'string' ? where : Object.entries(where).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => k).join(', ')}` : null, ...extraSv].filter(Boolean) } : null);
+  const cell = (raw, tip, nowName, where, same, extraSv = []) => (raw ? { raw, tip, same: plain ? false : same, sv: [plain ? null : same ? 'Already like this' : nowName ? `Now: ${nowName}` : 'Now: empty', where && (plain ? where === 'Craft it in the lab' && !opts.generic : !same) ? `Where: ${typeof where === 'string' ? where : Object.entries(where).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => k).join(', ')}` : null, ...extraSv].filter(Boolean) } : null);
   const eqName = (e) => (e?.item && real(e.item) ? pretty(e.item.displayName || e.item.rawName) : null);
   const boardFor = (S, isBis, rel) => {
     const groups = [];
@@ -1069,7 +1069,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
         const fromShelf = galleryRaw[16].indexOf(n);
         const where = fromShelf < 0 ? (trophyOutside.find((o) => o.n === n)?.where || null) : fromShelf < 48 ? 'Gallery shelf' : `Gallery podium ${fromShelf - 47} (level ${podiumLevel(fromShelf)})`;
         const owns = fromShelf >= 0 || trophyOutside.some((o) => o.n === n);
-        return { ...cell(raw, itemTip(it, `Trophy · level ${podiumLevel(48 + k)} podium`), was >= 1 ? pretty(ITEMS?.['Trophy' + was]?.displayName) : null, isBis && !owns ? null : where, fromShelf >= 48 && podiumLevel(fromShelf) === podiumLevel(48 + k), [isBis && !owns ? 'You do not own this trophy' : null, 'Changes the gallery for every character'].filter(Boolean)), tier: podiumLevel(48 + k) };
+        return { ...cell(raw, itemTip(it, `Trophy · level ${podiumLevel(48 + k)} podium`), was >= 1 ? pretty(ITEMS?.['Trophy' + was]?.displayName) : null, isBis && !owns ? null : where, fromShelf >= 48 && podiumLevel(fromShelf) === podiumLevel(48 + k), [isBis && !owns && !opts.generic ? 'You do not own this trophy' : null, 'Changes the gallery for every character'].filter(Boolean)), tier: podiumLevel(48 + k) };
       }) });
     }
     // Only what does something for this activity.
