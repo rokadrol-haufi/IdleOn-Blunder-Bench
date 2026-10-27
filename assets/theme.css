@@ -1,4 +1,4 @@
-/* IdleOn Tools · shared "Arcade" theme.
+/* IdleOn Blunder Bench · shared "Arcade" theme.
    Every page loads this file and assets/site.js. Colours are tokens; dark mode follows the system setting
    unless the Account page sets data-theme="light" or "dark" on <html>. */
 @import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap");

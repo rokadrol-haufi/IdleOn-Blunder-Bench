@@ -1,4 +1,4 @@
-/* IdleOn Tools · shared page script.
+/* IdleOn Blunder Bench · shared page script.
    Load it in <head> on every page (no defer) right after assets/theme.css:
      <script src="../assets/site.js" data-page="companion"></script>
    It does four things:
@@ -112,9 +112,9 @@
     if (!bar) return;
     const m = readMeta();
     const cur = (k) => (k === PAGE ? ' aria-current="page"' : '');
-    bar.setAttribute('aria-label', 'IdleOn Tools');
+    bar.setAttribute('aria-label', 'IdleOn Blunder Bench');
     bar.innerHTML =
-      `<a class="home" href="${ROOT}"${cur('home')}>IdleOn Tools</a>` +
+      `<a class="home" href="${ROOT}"${cur('home')}>IdleOn Blunder Bench</a>` +
       PAGES.map((p) => `<a href="${ROOT}${p.href}"${cur(p.key)}>${esc(p.label)}</a>`).join('') +
       '<span class="spacer"></span>' +
       `<a class="acct${m ? ' loaded' : ''}" href="${ROOT}account/"${cur('account')} title="${m ? 'Save loaded: ' + esc(m.label) : 'No save loaded yet'}"><span class="dot" aria-hidden="true"></span>${m ? 'Account' : 'Import save'}</a>`;
