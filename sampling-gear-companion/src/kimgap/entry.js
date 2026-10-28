@@ -24,7 +24,7 @@ import { getCardSets } from '@parsers/cards';
 import { calcCardBonus } from '@parsers/cardMath';
 import { getItemCapacity, getGoldenFoodMulti, getGoldenFoodBonus } from '@parsers/misc';
 import { lavaLog } from '@utility/helpers';
-import { getSuperTalentAddedLevels, isBookEligibleTalent } from '@parsers/talents';
+import { getSuperTalentAddedLevels, isBookEligibleTalent, calcTotalStarTalent } from '@parsers/talents';
 import { items as ITEMS } from '@website-data';
 import { fixCards } from './optimizer';
 
@@ -238,6 +238,9 @@ export const starTalentCheck = (c, characters, account, skill, pi, loadout) => {
   const base = skillMetrics(skill, v, c, characters, account, pi, false); if (!base.eff) return null;
   const baseS = skillMetrics(skill, v, c, characters, account, pi, true, base);
   const list = [];
+  // Star talent points not spent on this preset: total points minus the levels put into star talents.
+  let free = null;
+  try { free = Math.max(0, calcTotalStarTalent([c], account) - (v.flatStarTalents || []).reduce((a, t) => a + Math.max(0, t?.level || 0), 0)); } catch (e) { free = null; }
   for (const t of v.flatStarTalents || []) {
     const vip = VIP_BOOKS[t?.name] ?? null;
     const libUp = vip != null && bookMax && (t.maxLevel ?? 0) < bookMax;
@@ -256,7 +259,9 @@ export const starTalentCheck = (c, characters, account, skill, pi, loadout) => {
     const toLib = libUp ? { from: Math.max(0, t.maxLevel ?? 0), unread: !((t.maxLevel ?? 0) > 0), to: bookMax, ...compare(skill, v, c, characters, account, pi, base, baseS, t.skillIndex, t.level || 0, bookMax, null, null, t) } : null;
     // Highest max level any of your characters has for this star talent.
     const best = Math.max(...(characters || []).map((x) => (x.flatStarTalents || []).find((y) => y?.skillIndex === t.skillIndex)?.maxLevel ?? 0));
-    list.push({ skillIndex: t.skillIndex, name: t.name, level: t.level || 0, maxLevel: t.maxLevel, bestMax: best, description: t.description, vip, bookMax, toLib, notMaxed: (t.maxLevel ?? 0) > 0 && (t.level || 0) < t.maxLevel, ...r });
+    // Open-ended talents (max level far out of reach): what the free star talent points would add.
+    const toFree = (t.maxLevel ?? 0) > 10000 && free > 0 ? { points: free, ...compare(skill, v, c, characters, account, pi, base, baseS, t.skillIndex, t.level || 0, Math.min(t.maxLevel, (t.level || 0) + free), null, null, t) } : null;
+    list.push({ skillIndex: t.skillIndex, name: t.name, level: t.level || 0, maxLevel: t.maxLevel, bestMax: best, description: t.description, vip, bookMax, toLib, toFree, free, notMaxed: (t.maxLevel ?? 0) > 0 && (t.level || 0) < t.maxLevel, ...r });
   }
   list.sort((a, b) => b.sampleS - a.sampleS);
   return list;

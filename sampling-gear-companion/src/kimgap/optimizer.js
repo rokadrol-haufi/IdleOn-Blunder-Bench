@@ -203,6 +203,25 @@ for (const [skill, afkType] of Object.entries(SAMPLE_AFK)) {
   };
 }
 
+// Snapshot setups: worn when entering the map before the sample is taken, so Max HP (Hearty Diggy, mining) or
+// Max MP (Hocus Choppus, chopping) is as high as possible. The gallery cannot change for a snapshot (noGallery).
+const SNAPSHOT = { mining: ['hp', 'maxHp', 'Max HP'], chopping: ['mp', 'maxMp', 'Max MP'] };
+for (const [skill, [suffix, key, label]] of Object.entries(SNAPSHOT)) {
+  ACTIVITIES[`sample_${skill}_${suffix}`] = {
+    hidden: true, noGallery: true, label: `${label} snapshot`, unit: '',
+    parts: (c, chars, A) => ({ [label]: getMaxDamage(c, chars, A)?.[key] || 0 }),
+    partUnits: { [label]: '' },
+    value(c, chars, A) { return this.parts(c, chars, A)[label]; },
+  };
+}
+// Best classes for the sampling tabs (precomputed boards when no character is picked).
+Object.assign(ACTIVITIES.sample_mining, { bestClass: ['Royal_Guardian', 'Death_Bringer'] });
+Object.assign(ACTIVITIES.sample_mining_hp, { bestClass: ['Royal_Guardian', 'Death_Bringer'] });
+Object.assign(ACTIVITIES.sample_chopping, { bestClass: ['Arcane_Cultist', 'Elemental_Sorcerer'] });
+Object.assign(ACTIVITIES.sample_chopping_mp, { bestClass: ['Arcane_Cultist', 'Elemental_Sorcerer'] });
+Object.assign(ACTIVITIES.sample_catching, { bestClass: ['Siege_Breaker'] });
+Object.assign(ACTIVITIES.sample_fishing, { bestClass: ['Death_Bringer', 'Blood_Berserker'] });
+
 /* Save ------------------------------------------------------------------------------------------ */
 export const parseSave = (raw) => {
   const save = typeof raw === 'string' ? JSON.parse(raw) : raw;
@@ -482,7 +501,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
 
   // Gallery: which trophy sits on which podium. Podium positions start at 48; the first ones are the highest level.
   // This is account-wide, so a change here changes the gallery for every character.
-  const galleryRaw = galleryOn && Array.isArray(A?.gallery?.rawSpelunk?.[16]) ? A.gallery.rawSpelunk : null;
+  const galleryRaw = galleryOn && !act.noGallery && Array.isArray(A?.gallery?.rawSpelunk?.[16]) ? A.gallery.rawSpelunk : null;
   const podiums = galleryRaw ? Math.min(A.gallery.podiumsOwned || 0, galleryRaw[16].length - 48) : 0;
   const podiumLevel = (k) => { const off = k - 48; const g = A.gallery; return g.lv4PodiumsOwned > off ? 4 : (g.lv4PodiumsOwned + g.lv3PodiumsOwned) > off ? 3 : (g.lv4PodiumsOwned + g.lv3PodiumsOwned + g.lv2PodiumsOwned) > off ? 2 : 1; };
   const trophyOutside = [];

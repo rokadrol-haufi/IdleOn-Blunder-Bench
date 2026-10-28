@@ -1005,10 +1005,7 @@ const ACT_BIS = /*__ACTBIS__*/;
         <span class="muted">Level ${esc(h.vman)}'s ${low} above ${h.myLv}, or sample with a character below ${h.vLv}.</span>`));
       else if (h.vLv - h.myLv <= 5) out.push(row('soft', 'UISkillIcon43', `<strong>Right Hand of Action: only ${h.vLv - h.myLv} ${h.vLv - h.myLv === 1 ? 'level' : 'levels'} left.</strong>
         <span>${esc(char.name)} is ${low} level ${h.myLv}, the Voidwalker ${esc(h.vman)} is ${h.vLv}. Once ${esc(char.name)} reaches ${h.vLv}, the talent stops working for it. Keep ${esc(h.vman)}'s ${low} ahead.</span>`));
-      else out.push(row('', 'UISkillIcon43', `<strong>Right Hand of Action is on.</strong> <span class="muted">${esc(char.name)} ${low} ${h.myLv}, below the Voidwalker ${esc(h.vman)}'s ${h.vLv}.</span>`));
-    } else if (h && !h.vman) out.push(row('', 'UISkillIcon43', `<strong>No Maestro on this account yet.</strong> <span class="muted">Right Hand of Action comes from the Maestro / Voidwalker talent. Once you have one, it boosts ${low} on characters with a lower ${low} level.</span>`));
-    else if (h && h.noTalent) out.push(row('soft', 'UISkillIcon43', `<strong>Right Hand of Action has no points.</strong> <span>${esc(h.vman)} (${esc(pretty(h.cls || ''))}) has not levelled the talent, so it gives nothing yet. Once it does, it boosts ${low} on characters below ${esc(h.vman)}'s ${low} level (${h.vLv}).</span>`));
-    else if (h && h.self) out.push(row('', 'UISkillIcon43', `<strong>This is the Voidwalker.</strong> <span class="muted">Right Hand of Action only counts on itself with Enhancement Eclipse.</span>`));
+    } else if (h && h.noTalent) out.push(row('soft', 'UISkillIcon43', `<strong>Right Hand of Action has no points.</strong> <span>${esc(h.vman)} (${esc(pretty(h.cls || ''))}) has not levelled the talent, so it gives nothing yet. Once it does, it boosts ${low} on characters below ${esc(h.vman)}'s ${low} level (${h.vLv}).</span>`));
     const stars = char?.stars?.[skill];
     const sp = char?.supers?.[skill];
     const pre = sp ? ` on talent preset ${(sp.talentPreset ?? 0) + 1}` : '';
@@ -1022,22 +1019,23 @@ const ACT_BIS = /*__ACTBIS__*/;
         return bits.length ? bits.join(', ') : 'under 0.01%';
       };
       const snapTag = (s) => (resName && (s.name === 'UBERCHARGED_HEALTH' || (s.toLib?.effS || 1) > (s.toLib?.eff || 1) * 1.00005 || (s.effS || 1) > (s.eff || 1) * 1.00005) ? ` <span class="pill even">${resName} snapshot</span>` : '');
-      const notMax = stars.filter((s) => s.notMaxed && s.maxLevel <= 10000), open = stars.filter((s) => s.notMaxed && s.maxLevel > 10000), vipUp = stars.filter((s) => s.toLib);
+      // Only what is worth at least 0.01%; open-ended talents only when the free star talent points raise them.
+      const worth = (r) => !!r && ((r.eff || 1) > 1.00005 || (resName && (r.effS || 1) > 1.00005) || (r.afk || 1) > 1.00005);
+      const notMax = stars.filter((s) => s.notMaxed && s.maxLevel <= 10000 && worth(s)), open = stars.filter((s) => s.notMaxed && s.maxLevel > 10000 && worth(s.toFree)), vipUp = stars.filter((s) => s.toLib && worth(s.toLib));
       const li = (s) => `<li>${ic('UISkillIcon' + s.skillIndex)} <strong>${esc(tname(s.name))}</strong>${snapTag(s)} ${fmt(s.level)} / ${fmt(s.maxLevel)} · ${s.maxLevel > 10000 ? 'even fully maxed: ' : 'maxing it: '}${gainOf(s)}</li>`;
       const vli = (s) => `<li>${ic('UISkillIcon' + s.skillIndex)} <strong>${esc(tname(s.name))}</strong>${snapTag(s)}: ${s.toLib.unread ? `its VIP book is not read yet; a book can give it up to ${fmt(s.toLib.to)} levels` : `max level ${fmt(s.toLib.from)}, a VIP book can take it to ${fmt(s.toLib.to)}`} (VIP Bookshelf, needs ${fmt(s.vip)}% VIP Membership). Read it, then level it: ${gainOf(s.toLib)}.</li>`;
       if (notMax.length) out.push(row('warn', 'UISkillIcon' + notMax[0].skillIndex, `<strong>${notMax.length} star ${notMax.length === 1 ? 'talent is' : 'talents are'} not maxed${pre}.</strong><span>They raise ${low}; put star talent points into them.</span><ul>${notMax.map(li).join('')}</ul>`));
-      else out.push(row('', null, `<strong>Every star talent that matters for ${low} is maxed${pre}.</strong>`));
       if (vipUp.length) out.push(row('warn', 'UISkillIcon' + vipUp[0].skillIndex, `<strong>Star talents the library can still raise.</strong><span>Seven star talents have books on the library's VIP Bookshelf.</span><ul>${vipUp.map(vli).join('')}</ul>`));
-      if (open.length) out.push(row('soft', 'UISkillIcon' + open[0].skillIndex, `<strong>Open-ended star ${open.length === 1 ? 'talent' : 'talents'}.</strong><span>These have a cap you will not reach in practice; every point still helps a little.</span><ul>${open.map(li).join('')}</ul>`));
+      if (open.length) out.push(row('soft', 'UISkillIcon' + open[0].skillIndex, `<strong>${fmt(open[0].free)} star talent ${open[0].free === 1 ? 'point is' : 'points are'} free${pre}.</strong><span>Put them into the open-ended star ${open.length === 1 ? 'talent' : 'talents'}:</span><ul>${open.map((s) => `<li>${ic('UISkillIcon' + s.skillIndex)} <strong>${esc(tname(s.name))}</strong>${snapTag(s)} ${fmt(s.level)} → ${fmt(s.level + s.toFree.points)}: ${gainOf(s.toFree)}</li>`).join('')}</ul>`));
     }
     if (sp && sp.list.some((t) => t.sup)) {
-      const lib = sp.list.filter((t) => t.toLib), lv = sp.list.filter((t) => t.toMax);
+      const ok = (r) => !!r && (((includeSnap ? r.effS : r.eff) || 1) > 1.00005 || (r.afk || 1) > 1.00005);
+      const lib = sp.list.filter((t) => ok(t.toLib)), lv = sp.list.filter((t) => ok(t.toMax));
       const g = (r) => { const v = includeSnap ? r.effS : r.eff; const bits = []; if ((v || 1) > 1.00005) bits.push(fmtX(v) + ' efficiency'); if ((r.afk || 1) > 1.00005) bits.push(fmtX(r.afk) + ' AFK gains'); return bits.join(', ') || 'under 0.01%'; };
       const items = [
         ...lv.map((t) => `<li>${ic('UISkillIcon' + t.skillIndex)} <strong>${esc(tname(t.name))}</strong>: level ${fmt(t.toMax.from)} of ${fmt(t.toMax.to)}. Spend talent points to max it: ${g(t.toMax)}.</li>`),
         ...lib.map((t) => `<li>${ic('UISkillIcon' + t.skillIndex)} <strong>${esc(tname(t.name))}</strong>: max level ${fmt(t.toLib.from)}, the Talent Book Library goes up to ${fmt(t.toLib.to)}. Read its book, then level it: ${g(t.toLib)}.</li>`)];
       if (items.length) out.push(row('warn', 'UISkillIcon' + (lv[0] || lib[0]).skillIndex, `<strong>Talents that can still go higher${pre}.</strong><ul>${items.join('')}</ul>`));
-      else out.push(row('', null, `<strong>Every talent that matters for ${low} is at its max${sp.bookMax ? `, and the library's max (${fmt(sp.bookMax)}) is reached` : ''}.</strong> <span class="muted">Class talents, and the seven star talents on the VIP Bookshelf, get their max raised by library books.</span>`));
     }
     return out.length ? `<section class="checks" aria-label="Character checks">${out.join('')}</section>` : '';
   };
@@ -1065,16 +1063,45 @@ const ACT_BIS = /*__ACTBIS__*/;
       <div class="scroll"><table class="minitable"><thead><tr><th colspan="2">Fish</th><th>Bait</th><th>Line</th><th>Ring</th><th>Where</th></tr></thead><tbody>${body}</tbody></table></div>
       <p class="dnote">${slotBtn(BIS.zeus, 'Line')} For Bloach, Kraken and Caulifish, Zeus Gon Fishin was better than Platinum Twine depending on whether you were at an efficiency break point. Try it out yourself, or just use Platinum Twine. The difference is 1 to 2% at best.</p></article>`;
   };
-  const bisSection = (skill, char) => {
+  // Sampling setups: the skill setup and, for mining / chopping, the HP / MP snapshot setup. Each as "best from your
+  // account" (with a character) and "theoretical best in slot" (precomputed when no character is picked).
+  const SNAP_ACT = { mining: { act: 'sample_mining_hp', title: 'HP Snapshot', res: 'Max HP', bubble: 'Hearty Diggy' }, chopping: { act: 'sample_chopping_mp', title: 'Mana Snapshot', res: 'Max MP', bubble: 'Hocus Choppus' } };
+  const setupSection = (skill, char) => {
     TIPS = [];
-    const boards = BIS_BOARDS[skill] || [];
-    return `<section class="bis-wrap" aria-label="Best in slot">
-      <div class="bis-head"><h2>Best in slot</h2><span class="dnote">Hover or tap an item for its description and stats.</span></div>
-      <div class="checks-key"><span><i style="box-shadow:inset 0 0 0 2px #2f9e5a"></i>supered / equipped on ${esc(char?.name || 'this character')}</span><span><i style="box-shadow:inset 0 0 0 2px #d14b3b"></i>not supered / not equipped</span><span><i style="border:1px dashed var(--accent)"></i>sheet pick (not in the formula)</span><span>Trophies are checked against your gallery. The snapshot setups are not checked.</span></div>
-      <div class="bis-boards act-boards">${sampleBoards(skill, char)}${presetHtml(skill, char)}${superHtml(skill, char)}${boards.map((b) => bisBoard(b, char)).join('')}${skill === 'fishing' ? spotsHtml() : ''}</div>
-      <p class="credit">Taken and updated from AlmostPsycho's Sampling Sheet. Thank you!</p>
+    const lab = SKILL_META[skill].tab;
+    const sn = SNAP_ACT[skill];
+    const sets = [{ act: 'sample_' + skill, title: lab, skill: true }].concat(sn ? [{ act: sn.act, title: sn.title, snap: sn }] : []);
+    const gearNote = (x) => x.snap ? 'Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every lab chip.' : GEAR_NOTE;
+    const snapNote = (x) => x.snap ? `Wear this when you enter the map, before the sample is taken, so ${x.snap.res} is as high as possible for the ${x.snap.bubble} bubble. Then switch to the ${lab} setup. The gallery stays as it is. ` : '';
+    const groupsOf = (x, groups, r) => (x.skill ? withSheet(groups, skill, r) : groups).map(actGroupHtml).join('');
+    let pending = false;
+    const html = sets.map((x) => {
+      if (!char) {
+        const st = ACT_BIS && ACT_BIS.acts && ACT_BIS.acts[x.act];
+        if (!st) return '';
+        return `<article class="setup"><h3>Theoretical best in slot · ${esc(x.title)}</h3><div class="setup-groups">${groupsOf(x, st.boards, st)}</div>
+          <p class="dnote">${snapNote(x)}Worked out on a level ${st.level} ${esc(pretty(st.cls))}, with the cards, prayers and star signs of a late-game account (${esc(ACT_BIS.generated)}). ${gearNote(x)}</p></article>`;
+      }
+      const res = actResults.get(actKey(x.act, char.name));
+      if (res && res.error) return `<article class="setup"><p class="err">The ${esc(x.title)} setup search stopped: ${esc(res.error)}</p></article>`;
+      if (!res) {
+        setTimeout(() => runActivity(x.act, char.name).then(() => { if (current === skill && charChoice[skill] === char.name) render(); }), 0);
+        const first = !pending; pending = true;
+        return `<article class="setup act-run" role="status"><strong>Finding the best ${esc(x.title)} setup from your account…</strong><div class="meter" aria-hidden="true"><i></i></div><span ${first ? 'id="actProg" ' : ''}class="dnote">${first ? 'Starting…' : 'Waiting for the search above.'}</span></article>`;
+      }
+      const unit = x.snap ? ' ' + x.snap.res : '';
+      return `<article class="setup"><h3>Best from your account · ${esc(x.title)} · ${fmtX(res.gain)}${unit}</h3><div class="setup-groups">${groupsOf(x, res.boards.account, res)}</div>${x.snap ? `<p class="dnote">${snapNote(x)}</p>` : ''}</article>
+        <article class="setup"><h3>Theoretical best in slot · ${esc(x.title)} · ${fmtX(res.bisGain)}${unit}</h3><div class="setup-groups">${groupsOf(x, res.boards.bis, res)}</div><p class="dnote">${gearNote(x)}</p></article>`;
+    }).join('');
+    return `<section class="bis-wrap" aria-label="Setups">
+      <div class="bis-head"><h2>Setups</h2><span class="dnote">Hover or tap an item for its description and stats.</span></div>
+      <div class="checks-key">${char ? '<span><i style="box-shadow:inset 0 0 0 2px #2f9e5a"></i>already like this</span>' : ''}<span><i style="border:1px dashed var(--accent)"></i>sheet pick (not in the formula)</span><span>L4 / L3 / L2: podium level</span></div>
+      <div class="bis-boards act-boards">${html}${skill === 'fishing' ? spotsHtml() : ''}</div>
+      <p class="credit">Sheet picks are taken and updated from AlmostPsycho's Sampling Sheet. Thank you!</p>
     </section>`;
   };
+  // Talents and presets: below the setups.
+  const talentSection = (skill, char) => `${checksHtml(skill, char)}<section class="bis-wrap" aria-label="Talents"><div class="bis-boards">${presetHtml(skill, char)}${superHtml(skill, char)}</div></section>`;
   const tipEl = document.createElement('div'); tipEl.className = 'bis-tip'; tipEl.hidden = true; tipEl.setAttribute('role', 'tooltip'); document.body.appendChild(tipEl);
   const showTip = (btn) => {
     const s = TIPS[Number(btn.dataset.tip)]; if (!s) return;
@@ -1581,23 +1608,29 @@ const ACT_BIS = /*__ACTBIS__*/;
     const notesEl = document.querySelector('section.notes'); if (notesEl) notesEl.hidden = isAct(current);
     if (isAct(current)) { renderActivity(current); return; }
     const skill = current, meta = SKILL_META[skill];
-    if (!charChoice[skill]) charChoice[skill] = pickDefaultChar(skill);
-    const char = analysis.chars.find((c) => c.name === charChoice[skill]);
-    if (!char || !char.trees[skill]) { panel.innerHTML = '<p class="err">No efficiency data for this character.</p>'; return; }
+    const famSet = new Set(meta.family);
+    const mySample = analysis.samples?.[skill];
+    const sortedChars = analysis.chars.filter((c) => c.trees[skill]).slice().sort((a, b) => (famSet.has(b.cls) - famSet.has(a.cls)) || ((b.values[skill] || 0) - (a.values[skill] || 0)));
+    const char = charChoice[skill] ? analysis.chars.find((c) => c.name === charChoice[skill]) : null;
+    const picker = `<div class="controls">
+        <div class="field"><label for="charSel">Your ${esc(meta.tab.toLowerCase())} character</label>
+          <select id="charSel">${char ? '' : '<option value="" selected disabled>Pick a character…</option>'}${sortedChars.map((c) => `<option value="${esc(c.name)}" ${c.name === char?.name ? 'selected' : ''}>${esc(c.name)} · ${esc(pretty(c.cls))} · lv ${c.skillLv[skill]}${mySample?.char === c.name ? ' · best sample' : ''}</option>`).join('')}</select></div>
+      </div>`;
+    if (!char || !char.trees[skill]) {
+      panel.innerHTML = `${picker}${char ? '<p class="err">No efficiency data for this character.</p>' : '<p class="lede">Pick a character for setups from your account and the comparison with the top samplers. Until then, these are the theoretical best in slot.</p>'}${setupSection(skill, null)}`;
+      $('charSel').addEventListener('change', (e) => { charChoice[skill] = e.target.value; openRows.clear(); render(); });
+      return;
+    }
 
     const { base, rows, allGain } = compare(skill, char);
     const players = BENCH.skills[skill].players;
     const bestTop = players.reduce((a, p) => (p.eff > a.eff ? p : a), players[0]);
-    const mySample = analysis.samples?.[skill];
 
     const counted = rows.filter((r) => !r.ignored && r.best);
     const gaps = counted.filter((r) => !r.derived && r.best.gain > 1.005).sort((a, b) => b.best.gain - a.best.gain);
     const others = counted.filter((r) => r.derived || !(r.best.gain > 1.005)).sort((a, b) => (b.best?.gain || 0) - (a.best?.gain || 0));
     const ignored = rows.filter((r) => r.ignored);
     const maxLog = Math.max(...gaps.map((r) => Math.log(r.best.gain)), 0.01);
-
-    const famSet = new Set(meta.family);
-    const sortedChars = analysis.chars.filter((c) => c.trees[skill]).slice().sort((a, b) => (famSet.has(b.cls) - famSet.has(a.cls)) || ((b.values[skill] || 0) - (a.values[skill] || 0)));
 
     const lab = SK_ICON[skill].label;
     const SECTIONS = [
@@ -1631,12 +1664,9 @@ const ACT_BIS = /*__ACTBIS__*/;
     };
 
     panel.innerHTML = `
-      <div class="controls">
-        <div class="field"><label for="charSel">Your ${esc(meta.tab.toLowerCase())} character</label>
-          <select id="charSel">${sortedChars.map((c) => `<option value="${esc(c.name)}" ${c.name === char.name ? 'selected' : ''}>${esc(c.name)} · ${esc(pretty(c.cls))} · lv ${c.skillLv[skill]}${mySample?.char === c.name ? ' · best sample' : ''}</option>`).join('')}</select></div>
-      </div>
-      ${checksHtml(skill, char)}
-      ${(CHECK_NAME_FOR_TIP = char.name, bisSection(skill, char))}
+      ${picker}
+      ${(CHECK_NAME_FOR_TIP = char.name, setupSection(skill, char))}
+      ${talentSection(skill, char)}
       <div class="controls">
         <label class="check" for="showAhead"><input type="checkbox" id="showAhead" ${showAhead ? 'checked' : ''}> Show sources where you are level or ahead</label>
         <label class="check" for="showIgn"><input type="checkbox" id="showIgn" ${showIgnored ? 'checked' : ''}> Show ignored sources</label>

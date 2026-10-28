@@ -1,4 +1,5 @@
-// Precomputes the theoretical best-in-slot board of every activity tab, so the page shows it instantly.
+// Precomputes the theoretical best-in-slot board of every activity tab and sampling setup (skill and HP / MP
+// snapshot), so the page shows it instantly.
 // Each activity is worked out on the highest-level character of its best class (ACTIVITIES[k].bestClass;
 // highest-level character overall when it has none), with the default map, full min-max and the gallery chip trick.
 // Usage: node scripts/act-bis.cjs <bundle.js> <IdleonToolbox save JSON> <out.json>
@@ -11,7 +12,6 @@ eval(fs.readFileSync(bundle, 'utf8') + ';global.KimGap=KimGap;');
   const byLv = P.characters.slice().sort((a, b) => b.level - a.level);
   const acts = {};
   for (const [key, act] of Object.entries(KimGap.ACTIVITIES)) {
-    if (key.startsWith('sample_')) continue;
     const want = act.bestClass || [];
     const ref = want.map((cls) => byLv.find((c) => c.class === cls)).find(Boolean) || byLv[0];
     const t = Date.now();
