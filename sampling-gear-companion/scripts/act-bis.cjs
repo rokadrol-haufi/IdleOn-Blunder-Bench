@@ -2,16 +2,18 @@
 // snapshot), so the page shows it instantly.
 // Each activity is worked out on the highest-level character of its best class (ACTIVITIES[k].bestClass;
 // highest-level character overall when it has none), with the default map, full min-max and the gallery chip trick.
-// Usage: node scripts/act-bis.cjs <bundle.js> <IdleonToolbox save JSON> <out.json>
+// Usage: node scripts/act-bis.cjs <bundle.js> <IdleonToolbox save JSON> <out.json> [activity ...]
+// With activity keys, only those are redone and merged into the existing out.json.
 const fs = require('fs');
 global.window = global; global.self = global; global.localStorage = { getItem: () => null, setItem: () => {} };
-const [bundle, savePath, out] = process.argv.slice(2);
+const [bundle, savePath, out, ...only] = process.argv.slice(2);
 eval(fs.readFileSync(bundle, 'utf8') + ';global.KimGap=KimGap;');
 (async () => {
   const P = KimGap.parseSave(fs.readFileSync(savePath, 'utf8'));
   const byLv = P.characters.slice().sort((a, b) => b.level - a.level);
-  const acts = {};
+  const acts = only.length && fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, 'utf8')).acts : {};
   for (const [key, act] of Object.entries(KimGap.ACTIVITIES)) {
+    if (only.length && !only.includes(key)) continue;
     const want = act.bestClass || [];
     const ref = want.map((cls) => byLv.find((c) => c.class === cls)).find(Boolean) || byLv[0];
     const t = Date.now();

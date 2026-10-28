@@ -1071,8 +1071,8 @@ const ACT_BIS = /*__ACTBIS__*/;
     const lab = SKILL_META[skill].tab;
     const sn = SNAP_ACT[skill];
     const sets = [{ act: 'sample_' + skill, title: lab, skill: true }].concat(sn ? [{ act: sn.act, title: sn.title, snap: sn }] : []);
-    const gearNote = (x) => x.snap ? 'Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every lab chip.' : GEAR_NOTE;
-    const snapNote = (x) => x.snap ? `Wear this when you enter the map, before the sample is taken, so ${x.snap.res} is as high as possible for the ${x.snap.bubble} bubble. Then switch to the ${lab} setup. The gallery stays as it is. ` : '';
+    const gearNote = (x) => x.snap ? 'Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls.' : GEAR_NOTE;
+    const snapNote = (x) => x.snap ? `Wear this when you enter the map, before the sample is taken, so ${x.snap.res} is as high as possible for the ${x.snap.bubble} bubble. Then switch to the ${lab} setup. The gallery and lab chips stay as they are. ` : '';
     const groupsOf = (x, groups, r) => (x.skill ? withSheet(groups, skill, r) : groups).map(actGroupHtml).join('');
     let pending = false;
     const html = sets.map((x) => {

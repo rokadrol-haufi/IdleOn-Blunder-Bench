@@ -204,11 +204,12 @@ for (const [skill, afkType] of Object.entries(SAMPLE_AFK)) {
 }
 
 // Snapshot setups: worn when entering the map before the sample is taken, so Max HP (Hearty Diggy, mining) or
-// Max MP (Hocus Choppus, chopping) is as high as possible. The gallery cannot change for a snapshot (noGallery).
+// Max MP (Hocus Choppus, chopping) is as high as possible. The gallery and lab chips cannot change for a snapshot
+// (noGallery, noChips): they stay as they are and are not shown.
 const SNAPSHOT = { mining: ['hp', 'maxHp', 'Max HP'], chopping: ['mp', 'maxMp', 'Max MP'] };
 for (const [skill, [suffix, key, label]] of Object.entries(SNAPSHOT)) {
   ACTIVITIES[`sample_${skill}_${suffix}`] = {
-    hidden: true, noGallery: true, label: `${label} snapshot`, unit: '',
+    hidden: true, noGallery: true, noChips: true, label: `${label} snapshot`, unit: '',
     parts: (c, chars, A) => ({ [label]: getMaxDamage(c, chars, A)?.[key] || 0 }),
     partUnits: { [label]: '' },
     value(c, chars, A) { return this.parts(c, chars, A)[label]; },
@@ -642,7 +643,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     return [best, bestV];
   };
 
-  const categories = opts.categories || ['equip', 'tools', 'cards', 'cardSet', 'prayers', 'chips', 'signs', 'obols', 'gallery', 'food'];
+  const categories = (opts.categories || ['equip', 'tools', 'cards', 'cardSet', 'prayers', 'chips', 'signs', 'obols', 'gallery', 'food']).filter((k) => !(act.noChips && k === 'chips'));
   let cardTop = null, cardTopWide = null, cardsScanned = false;
   const boostSlots = (st) => [st.chips.some((e) => e?.chip?.index === 20) ? 0 : null, st.chips.some((e) => e?.chip?.index === 21) ? 7 : null].filter((x) => x != null);
   const search = async (start, cats = categories, maxPass = act.slow ? 2 : 4) => {
@@ -916,7 +917,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
       [bis, bisV] = await trySlot(bis, bisV, key, i, cands, false);
     }
     // Lab chips: every chip type, as if crafted.
-    for (let i = 0; i < bis.chips.length; i++) {
+    if (!act.noChips) for (let i = 0; i < bis.chips.length; i++) {
       const one = new Set(bis.chips.map((e, k) => (k !== i && e?.chip?.bool1 === '1' ? e.chip.index : null)).filter((x) => x != null));
       const owned = new Set([...(A?.lab?.chips || []).filter((x) => x.repoAmount > 0).map((x) => x.index), ...(A?.lab?.playersChips || []).flat().map((x) => x?.index)]);
       const cands = (A?.lab?.chips || []).filter((ch) => ch && ch.index != null && !one.has(ch.index)).map((ch) => ({ id: 'bis-chip' + ch.index, chip: ch, where: owned.has(ch.index) ? 'Your chips' : 'Craft it in the lab' }));
@@ -970,7 +971,7 @@ export const optimizeLoadout = async (P, charName, activityKey, opts = {}) => {
     for (let i = 0; i < S.cards.length; i++) if (S.cards[i]) await test('cards' + i, (n) => { n.cards[i] = null; });
     if (S.cardSet) await test('cardSet', (n) => { n.cardSet = null; });
     for (let i = 0; i < S.prayers.length; i++) if (S.prayers[i]) await test('prayers' + i, (n) => { n.prayers[i] = null; });
-    for (let i = 0; i < S.chips.length; i++) if (S.chips[i]) await test('chips' + i, (n) => { n.chips[i] = null; });
+    if (!act.noChips) for (let i = 0; i < S.chips.length; i++) if (S.chips[i]) await test('chips' + i, (n) => { n.chips[i] = null; });
     for (let i = 0; i < S.signs.length; i++) if (S.signs[i]) await test('signs' + i, (n) => { n.signs[i] = null; });
     for (let i = 0; i < S.obols.length; i++) if (S.obols[i]) await test('obols' + i, (n) => { n.obols[i] = null; });
     for (let i = 0; i < S.food.length; i++) if (S.food[i]) await test('food' + i, (n) => { n.food[i] = null; });
