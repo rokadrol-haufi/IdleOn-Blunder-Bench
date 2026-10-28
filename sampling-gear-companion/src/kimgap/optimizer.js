@@ -22,7 +22,7 @@ import { isGalleryActive, getTrophyBonuses, getNametagBonuses } from '@parsers/w
 import { getPrayerBonusAndCurse } from '@parsers/world-3/prayers';
 import { isHatRackActive } from '@parsers/world-3/hatRack';
 import { getLegendTalentBonus } from '@parsers/world-7/legendTalents';
-import { items as ITEMS, classPromotions, slab as SLAB, monsters as MONSTERS, mapEnemiesArray, mapNames, monsterDrops as MONSTER_DROPS, bonuses as BONUSES } from '@website-data';
+import { items as ITEMS, classPromotions, slab as SLAB, monsters as MONSTERS, mapEnemiesArray, mapNames, monsterDrops as MONSTER_DROPS, bonuses as BONUSES, crafts as CRAFTS } from '@website-data';
 import { getClassExpMulti } from '@parsers/character';
 
 // IdleonToolbox looks up the Chaotic Troll card (+% All Skill Efficiency) by its rawName "Boss4B" where it should
@@ -310,12 +310,14 @@ const STONES = {
 const dropChance = (it) => (it && (it.UQ1txt === '%_DROP_CHANCE' || it.UQ2txt === '%_DROP_CHANCE')
   ? { ...it, UQ1txt: it.UQ1txt === '%_DROP_CHANCE' ? '%_DROP_RATE' : it.UQ1txt, UQ2txt: it.UQ2txt === '%_DROP_CHANCE' ? '%_DROP_RATE' : it.UQ2txt } : it);
 const keychainVal = (v) => (typeof v === 'string' && v.includes(',') ? Math.max(...v.split(',').map(Number).filter(Number.isFinite)) : num(v));
+// Only items crafted at the anvil can roll an extra upgrade slot; quest, drop and shop items keep their slots.
+const CRAFTABLE = new Set(Object.values(CRAFTS || {}).map((x) => x?.rawName).filter(Boolean));
 export const stonedItem = (raw, fam) => {
   const base = ITEMS?.[raw]; if (!base) return null;
   const it = { ...base, rawName: raw };
   if (it.Type === 'KEYCHAIN') { it.UQ1val = keychainVal(it.UQ1val); it.UQ2val = keychainVal(it.UQ2val); }
   const kind = WEAPONS.includes(it.Type) ? 'weapon' : TOOL_SLOTS.some((t) => t[1].includes(it.Type)) ? 'tool' : 'armor';
-  const slots = num(it.Upgrade_Slots_Left) > 0 ? num(it.Upgrade_Slots_Left) + 1 : 0;
+  const slots = num(it.Upgrade_Slots_Left) > 0 ? num(it.Upgrade_Slots_Left) + (CRAFTABLE.has(raw) ? 1 : 0) : 0;
   if (slots) {
     const s = STONES[kind], main = MAIN_STAT[fam] || 'STR';
     it.Weapon_Power = num(it.Weapon_Power) + slots * s.Weapon_Power;

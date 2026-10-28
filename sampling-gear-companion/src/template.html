@@ -1071,7 +1071,7 @@ const ACT_BIS = /*__ACTBIS__*/;
     const lab = SKILL_META[skill].tab;
     const sn = SNAP_ACT[skill];
     const sets = [{ act: 'sample_' + skill, title: lab, skill: true }].concat(sn ? [{ act: sn.act, title: sn.title, snap: sn }] : []);
-    const gearNote = (x) => x.snap ? 'Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls.' : GEAR_NOTE;
+    const gearNote = (x) => x.snap ? 'Gear: Stone VII in every upgrade slot (+1 slot on craftable items), top keychain rolls.' : GEAR_NOTE;
     const snapNote = (x) => x.snap ? `Wear this when you enter the map, before the sample is taken, so ${x.snap.res} is as high as possible for the ${x.snap.bubble} bubble. Then switch to the ${lab} setup. The gallery and lab chips stay as they are. ` : '';
     const groupsOf = (x, groups, r) => (x.skill ? withSheet(groups, skill, r) : groups).map(actGroupHtml).join('');
     let pending = false;
@@ -1514,7 +1514,7 @@ const ACT_BIS = /*__ACTBIS__*/;
     return out;
   };
   const actArticles = (r, skill) => `<article class="setup"><h3>Best from your account · ${fmtX(r.gain)}</h3><div class="setup-groups">${(skill ? withSheet(r.boards.account, skill, r) : r.boards.account).map(actGroupHtml).join('')}</div></article>
-        <article class="setup"><h3>Theoretical best in slot · ${fmtX(r.bisGain)}</h3><div class="setup-groups">${(skill ? withSheet(r.boards.bis, skill, r) : r.boards.bis).map(actGroupHtml).join('')}</div><p class="dnote">Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy.</p></article>`;
+        <article class="setup"><h3>Theoretical best in slot · ${fmtX(r.bisGain)}</h3><div class="setup-groups">${(skill ? withSheet(r.boards.bis, skill, r) : r.boards.bis).map(actGroupHtml).join('')}</div><p class="dnote">Stone VII in every upgrade slot (+1 slot on craftable items), top keychain rolls, every trophy.</p></article>`;
   const actBoards = (r) => {
     if (!r.boards) return '';
     return `<section class="bis-wrap act-boards" aria-label="Setups">
@@ -1538,7 +1538,7 @@ const ACT_BIS = /*__ACTBIS__*/;
     for (const cls of want) { const c = byLv.find((x) => x.cls === cls); if (c) return { ref: c, want, has: true }; }
     return byLv[0] ? { ref: byLv[0], want, has: !want.length } : null;
   };
-  const GEAR_NOTE = 'Gear: Stone VII in every upgrade slot (+1 Post Office), top keychain rolls, every trophy and lab chip.';
+  const GEAR_NOTE = 'Gear: Stone VII in every upgrade slot (+1 slot on craftable items), top keychain rolls, every trophy and lab chip.';
   const bisBoardHtml = (title, boards, note) => `<section class="bis-wrap act-boards" aria-label="Theoretical best in slot"><div class="bis-boards"><article class="setup"><h3>${esc(title)}</h3><div class="setup-groups">${boards.map(actGroupHtml).join('')}</div><p class="dnote">${note}</p></article></div></section>`;
   // The precomputed board (full min-max, gallery chip trick, default map); the checkboxes do not change it.
   const staticBis = (act) => {
