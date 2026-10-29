@@ -267,7 +267,7 @@ td.farm .sub{margin-top:4px}
       <label class="switch"><input type="checkbox" id="meritSw"><span class="track" aria-hidden="true"></span><img id="mImg" alt=""><span id="meritLbl"></span></label>
       <span class="muted" id="meritNote"></span>
     </div>
-    <label class="chk effsw"><input type="checkbox" id="effSw"> <strong>Use reductions efficiently</strong> <span class="muted">each button only lists stamps that need exactly that much reduction</span></label>
+    <label class="chk effsw" title="Each button only lists stamps that need exactly that much reduction"><input type="checkbox" id="effSw"> <strong>Use reductions efficiently</strong></label>
     <div class="fitcounts" id="planSummary" role="group" aria-label="Reduction: number of stamps whose next tier fits in a character's inventory"></div>
     <div class="customctl" id="customCtl" hidden>
       <span class="lbl">Custom reduction</span>
@@ -587,9 +587,9 @@ td.farm .sub{margin-top:4px}
     if (box.hidden) return;
     const hNow = Math.min(90, Math.max(0, D.meta.h.value || 0));
     const total = D.meta.gilded || 0;
-    const head = `<h3>Upgrade order for your ★ priorities · ${hNow}% Hydrogen, ${total} Gilded Stamp${total === 1 ? '' : 's'}</h3>`;
+    const head = `<h3>Upgrade order ★ · ${hNow}% Hydrogen · ${total} Gilded</h3>`;
     const favs = D.stamps.filter((s) => PRI.has(s.r));
-    if (!favs.length) { box.innerHTML = head + '<p class="muted">Mark stamps with ☆ in the table to get an upgrade order for them.</p>'; return; }
+    if (!favs.length) { box.innerHTML = head + '<p class="muted">Star stamps in the table to plan them.</p>'; return; }
     const tier = {};
     const cand = (pred) => favs.map((s) => ({ s, j: tier[s.r] || 0 })).map((x) => ({ ...x, n: needOf(x.s, x.j) })).filter((x) => x.n && pred(x.n));
     // The one that needs the most Hydrogen first, then the one closest to falling out of reach.
@@ -617,15 +617,16 @@ td.farm .sub{margin-top:4px}
     const perDay = (D.meta.h.level || 0) * (D.meta.h.baseBonus || 0);
     const daysTo = (h) => (perDay > 0 ? Math.max(1, Math.ceil((h - hAfter) / perDay)) : null);
     const red = (st) => st.g ? `${st.h}% + Gilded` : 'no reduction';
-    const li = (st) => `<li>${icon(st.s.r, 'sm')}<span><strong>${esc(st.s.n)}</strong> → Lv ${st.lv} <span class="muted">· ${red(st)} · ${fmt(st.cost)} ${esc(st.s.i)}${st.why === 'hydrogen' ? ' · uses your Hydrogen' : ''}</span></span></li>`;
+    const li = (st) => `<li>${icon(st.s.r, 'sm')}<span><strong>${esc(st.s.n)}</strong> → Lv ${st.lv} <span class="muted">· ${red(st)} · ${fmt(st.cost)} ${esc(st.s.i)}</span></span></li>`;
     const gSteps = steps.filter((x) => x.g), nSteps = steps.filter((x) => !x.g);
+    const noneList = gilded > 0 ? cand((n) => n.lvl === 'none') : [];
+    const wli = (x) => `<li>${icon(x.s.r, 'sm')}<span><strong>${esc(x.s.n)}</strong> <span class="muted">· ${x.n.h}%${daysTo(x.n.h) ? ` · ${daysTo(x.n.h)} day${daysTo(x.n.h) === 1 ? '' : 's'}` : ''}</span></span></li>`;
     box.innerHTML = `${head}
-      <p class="muted">The game takes a Gilded Stamp on every upgrade while you have one, and your Hydrogen only on the first upgrade. So the Hydrogen goes to the priority that needs it most, Gilded Stamps to priorities that need one, and priorities that fit without any reduction come after your Gilded Stamps are used up.</p>
-      ${gSteps.length ? `<ol class="steps">${gSteps.map(li).join('')}</ol>` : '<p>None of your priorities needs a Gilded Stamp right now.</p>'}
-      ${gilded > 0 && gilded < total ? `<p class="muted">${gilded} Gilded Stamp${gilded === 1 ? '' : 's'} left over: none of your priorities needs another one.</p>` : ''}
-      ${gilded > 0 && cand((n) => n.lvl === 'none').length ? `<h4>Fit without any reduction</h4><p class="muted">Upgrade these once your Gilded Stamps are used up; until then each upgrade would take one.</p><ul class="steps">${cand((n) => n.lvl === 'none').map((x) => `<li>${icon(x.s.r, 'sm')}<span><strong>${esc(x.s.n)}</strong> → Lv ${Math.max(x.s.l, x.s.m) + (x.j + 1) * x.s.k} <span class="muted">· ${fmt(tierCost(x.s, x.j, false, 0))} ${esc(x.s.i)}</span></span></li>`).join('')}</ul>` : ''}
-      ${nSteps.length ? `<h4>Then, with no Gilded Stamps left</h4><ol class="steps" start="${gSteps.length + 1}">${nSteps.map(li).join('')}</ol>` : ''}
-      ${waitH.length ? `<h4>Wait for more Hydrogen</h4><ul class="steps">${waitH.map((x) => `<li>${icon(x.s.r, 'sm')}<span><strong>${esc(x.s.n)}</strong> <span class="muted">· needs ${x.n.h}% + Gilded${daysTo(x.n.h) ? ` · ${daysTo(x.n.h)} day${daysTo(x.n.h) === 1 ? '' : 's'} of Hydrogen${steps.length ? ' after this order' : ''}` : ''}</span></span></li>`).join('')}</ul>` : ''}`;
+      ${gSteps.length ? `<ol class="steps">${gSteps.map(li).join('')}</ol>` : '<p class="muted">Nothing to upgrade with a Gilded now.</p>'}
+      ${gilded > 0 && gilded < total ? `<p class="muted">${gilded} Gilded left over.</p>` : ''}
+      ${noneList.length ? `<h4>No reduction · after your Gilded are used</h4><ul class="steps">${noneList.map((x) => `<li>${icon(x.s.r, 'sm')}<span><strong>${esc(x.s.n)}</strong> → Lv ${Math.max(x.s.l, x.s.m) + (x.j + 1) * x.s.k} <span class="muted">· ${fmt(tierCost(x.s, x.j, false, 0))} ${esc(x.s.i)}</span></span></li>`).join('')}</ul>` : ''}
+      ${nSteps.length ? `<h4>Then without Gilded</h4><ol class="steps" start="${gSteps.length + 1}">${nSteps.map(li).join('')}</ol>` : ''}
+      ${waitH.length ? `<h4>Wait for Hydrogen</h4><ul class="steps">${waitH.map(wli).join('')}</ul>` : ''}`;
   };
   function renderPlan(){
     try { localStorage.setItem('stampPlanner', JSON.stringify({sk, cg, ch, merit: meritOn, maxCap: forceMax, eff: effOn})); } catch (e) {}
