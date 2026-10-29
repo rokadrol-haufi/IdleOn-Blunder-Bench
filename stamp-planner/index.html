@@ -166,6 +166,14 @@ tr.group td{font-family:var(--f-display);font-size:12px;text-transform:uppercase
 .empty{display:flex;flex-direction:column;gap:4px;background:var(--accent-soft);color:var(--ink);border:1px solid var(--accent);border-radius:6px;padding:14px}
 .empty[hidden]{display:none}
 .fitcounts{display:flex;flex-wrap:wrap;gap:8px}
+.effsw{flex-basis:100%;flex-wrap:wrap}
+.effplan{display:flex;flex-direction:column;gap:8px;background:var(--panel);border:1px solid var(--gold);border-left:4px solid var(--gold);border-radius:6px;padding:12px 16px}
+.effplan h3{font-family:var(--f-display);font-size:16px;margin:0}
+.effplan h4{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:6px 0 0}
+.effplan p{font-size:13px}
+.effplan .steps{margin:0;padding-left:1.6em;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.effplan .steps li > *{vertical-align:middle}
+.effplan .steps .ico.sm{width:26px;height:26px;margin-right:6px}
 .fitcounts{flex-basis:100%}
 .fc{font:inherit;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);color:var(--muted);background:var(--bg);cursor:pointer}
 .fc:hover{border-color:var(--accent);color:var(--ink)}
@@ -259,6 +267,7 @@ td.farm .sub{margin-top:4px}
       <label class="switch"><input type="checkbox" id="meritSw"><span class="track" aria-hidden="true"></span><img id="mImg" alt=""><span id="meritLbl"></span></label>
       <span class="muted" id="meritNote"></span>
     </div>
+    <label class="chk effsw"><input type="checkbox" id="effSw"> <strong>Use reductions efficiently</strong> <span class="muted">each button only lists stamps that need exactly that much reduction</span></label>
     <div class="fitcounts" id="planSummary" role="group" aria-label="Reduction: number of stamps whose next tier fits in a character's inventory"></div>
     <div class="customctl" id="customCtl" hidden>
       <span class="lbl">Custom reduction</span>
@@ -271,6 +280,7 @@ td.farm .sub{margin-top:4px}
     <label class="chk"><input type="checkbox" id="fExalt"> Only exalted</label>
     <input type="search" id="fText" placeholder="Filter stamp or material" aria-label="Filter stamp or material">
   </div>
+  <div class="effplan" id="effPlan" hidden></div>
   <div class="tablebox"><table id="planTable"><thead><tr>
     <th class="sortable" data-k="n" tabindex="0">Stamp</th>
     <th class="num sortable" data-k="l" tabindex="0">Level</th>
@@ -517,6 +527,10 @@ td.farm .sub{margin-top:4px}
   });
   // Meritocracy preview: "All material costs for upgrading Stamp Max LV are }x lower" (Meritocracy bonus 14).
   // Cost × 1 / (1 + bonus%), bonus = base 100% × your Meritocracy multi. Off = the engine's own numbers.
+  // Efficient use of reductions: the game takes a Gilded Stamp on every upgrade while you have one, and Hydrogen
+  // only on the first upgrade (it resets to 0% after it). So a stamp should only take the reduction it needs.
+  let effOn = false;
+  try { effOn = JSON.parse(localStorage.getItem('stampPlanner') || '{}').eff === true; } catch (e) {}
   let forceMax = false;
   try { forceMax = JSON.parse(localStorage.getItem('stampPlanner') || '{}').maxCap === true; } catch (e) {}
   let meritOn = false;
@@ -546,8 +560,76 @@ td.farm .sub{margin-top:4px}
       s.cs.custom = c.cost; s.rr.custom = c.n; s.mr.custom = c.mats; s.gr.custom = c.gold;
     });
   };
+  // Cost of tier j (0 = the next material upgrade) with a Gilded Stamp g and Hydrogen h, after the Meritocracy preview.
+  const tierCost = (s, j, g, h) => matCost((j === 0 ? s.p0 : s.pt[j]) * meritFactor(), g, h);
+  // The least reduction tier j needs: 'none', 'g' (Gilded at 0%), or 'h' with the lowest Hydrogen % that is enough.
+  const needOf = (s, j = 0) => {
+    if (!s.pt || (j > 0 && j >= s.pt.length)) return null;
+    if (tierCost(s, j, false, 0) <= s.cap) return { lvl: 'none', h: 0 };
+    if (tierCost(s, j, true, 0) <= s.cap) return { lvl: 'g', h: 0 };
+    for (let h = 1; h <= 90; h++) if (tierCost(s, j, true, h) <= s.cap) return { lvl: 'h', h };
+    return null;
+  };
+  // Which reduction button a stamp belongs to when reductions are used efficiently.
+  const effBucket = (s) => {
+    const n = needOf(s); if (!n) return null;
+    if (n.lvl === 'none') return 'now';
+    if (n.lvl === 'g') return 'g';
+    return n.h <= hydroDaily() ? 'g70' : 'g90';
+  };
+  const effFits = (s, key) => (effOn && ['now', 'g', 'g70', 'g90'].includes(key) ? effBucket(s) === key : s.cs[key] <= s.cap);
+  // The upgrade order for the Hydrogen and Gilded Stamps you have now: the first upgrade takes the Hydrogen and a
+  // Gilded, then each upgrade takes a Gilded while any are left, then upgrades get no reduction at all.
+  const renderEffPlan = () => {
+    const box = $('effPlan');
+    box.hidden = !effOn || !hasCustom();
+    if (box.hidden) return;
+    const hNow = Math.min(90, Math.max(0, D.meta.h.value || 0));
+    let gilded = D.meta.gilded || 0;
+    const tier = {}, used = {};
+    const left = (s) => (s.q ? Infinity : (s.o || 0) - (used[s.ir] || 0));
+    const cand = (pred) => D.stamps.map((s) => ({ s, j: tier[s.r] || 0 })).map((x) => ({ ...x, n: needOf(x.s, x.j) })).filter((x) => x.n && pred(x.n));
+    // Priorities first, then exalted, then stamps whose material is in storage (gear has to be crafted first),
+    // then the one that needs the most Hydrogen, then the one closest to falling out of reach.
+    const fillOf = (x) => tierCost(x.s, x.j, x.n.lvl !== 'none', x.n.h) / x.s.cap;
+    const rank = (a, b) => (PRI.has(b.s.r) - PRI.has(a.s.r)) || (b.s.x - a.s.x) || (a.s.q - b.s.q) || (b.n.h - a.n.h) || (fillOf(b) - fillOf(a));
+    const steps = [], short = new Set();
+    const take = (x, g, h, why) => {
+      const cost = tierCost(x.s, x.j, g, h);
+      if (cost > left(x.s)) { short.add(x.s.r); return false; }
+      if (!x.s.q) used[x.s.ir] = (used[x.s.ir] || 0) + cost;
+      steps.push({ s: x.s, lv: Math.max(x.s.l, x.s.m) + (x.j + 1) * x.s.k, cost, g, h, why });
+      tier[x.s.r] = x.j + 1;
+      return true;
+    };
+    const pick = (list, g, h, why) => { for (const x of list.sort(rank)) if (!short.has(x.s.r) && take(x, g, h, why)) return true; return false; };
+    let first = true;
+    for (let guard = 0; gilded > 0 && guard < 500; guard++) {
+      const h = first ? hNow : 0;
+      // First upgrade: the stamp that needs the most of the Hydrogen you have; otherwise one that needs a Gilded.
+      const ok = (first && hNow > 0 && pick(cand((n) => n.lvl === 'h' && n.h <= hNow), true, h, 'needs the Hydrogen'))
+        || pick(cand((n) => n.lvl === 'g' || (n.lvl === 'h' && n.h <= h)), true, h, 'needs a Gilded Stamp');
+      if (!ok) break;
+      gilded--; first = false;
+    }
+    const gUsed = (D.meta.gilded || 0) - gilded;
+    for (let guard = 0; gilded === 0 && guard < 500; guard++) if (!pick(cand((n) => n.lvl === 'none'), false, 0, 'no reduction needed')) break;
+    const waitH = cand((n) => n.lvl === 'h' && n.h > hNow).sort((a, b) => a.n.h - b.n.h);
+    const perDay = (D.meta.h.level || 0) * (D.meta.h.baseBonus || 0);
+    const daysTo = (h) => (perDay > 0 ? Math.max(1, Math.ceil((h - hNow) / perDay)) : null);
+    const red = (st) => st.g ? `${st.h}% + Gilded` : 'no reduction';
+    const li = (st) => `<li>${icon(st.s.r, 'sm')}<span><strong>${esc(st.s.n)}</strong> → Lv ${st.lv} <span class="muted">· ${red(st)} · ${fmt(st.cost)} ${esc(st.s.i)}${st.s.q ? ' (craft them first)' : ''}${st.why === 'needs the Hydrogen' ? ' · uses your Hydrogen' : ''}</span></span></li>`;
+    const gSteps = steps.filter((x) => x.g), nSteps = steps.filter((x) => !x.g);
+    box.innerHTML = `<h3>Upgrade order with ${hNow}% Hydrogen and ${D.meta.gilded || 0} Gilded Stamp${D.meta.gilded === 1 ? '' : 's'}</h3>
+      <p class="muted">The game takes a Gilded Stamp on every upgrade while you have one, and your Hydrogen only on the first upgrade. So the Hydrogen goes to the stamp that needs it, Gilded Stamps to stamps that need one, and stamps that fit without any reduction wait until your Gilded Stamps are used up. Only upgrades whose material is in storage are listed; gear stamps come last because the items have to be crafted.</p>
+      ${gSteps.length ? `<ol class="steps">${gSteps.map(li).join('')}</ol>` : '<p>Nothing needs a Gilded Stamp right now.</p>'}
+      ${gilded > 0 && gUsed < (D.meta.gilded || 0) ? `<p class="muted">${gilded} Gilded Stamp${gilded === 1 ? '' : 's'} left over: hold them, any further upgrade would use one on a stamp that does not need it.</p>` : ''}
+      ${nSteps.length ? `<h4>Then, with no Gilded Stamps left</h4><ol class="steps" start="${gSteps.length + 1}">${nSteps.map(li).join('')}</ol>` : ''}
+      ${waitH.length ? `<h4>Wait for more Hydrogen</h4><ul class="steps">${waitH.slice(0, 8).map((x) => `<li>${icon(x.s.r, 'sm')}<span><strong>${esc(x.s.n)}</strong> <span class="muted">· needs ${x.n.h}% + Gilded${daysTo(x.n.h) ? ` · ${daysTo(x.n.h)} day${daysTo(x.n.h) === 1 ? '' : 's'} without a material upgrade` : ''}</span></span></li>`).join('')}</ul>` : ''}
+      ${(() => { const miss = [...short].filter((r) => !steps.some((x) => x.s.r === r)); return miss.length ? `<details><summary class="muted">${miss.length} more stamp${miss.length === 1 ? '' : 's'} would fit, but the material in storage is short</summary><p class="muted">${miss.map((r) => esc(D.stamps.find((s) => s.r === r)?.n || r)).join(', ')}.</p></details>` : ''; })()}`;
+  };
   function renderPlan(){
-    try { localStorage.setItem('stampPlanner', JSON.stringify({sk, cg, ch, merit: meritOn, maxCap: forceMax})); } catch (e) {}
+    try { localStorage.setItem('stampPlanner', JSON.stringify({sk, cg, ch, merit: meritOn, maxCap: forceMax, eff: effOn})); } catch (e) {}
     applyScenarios();
     const k = scenKey();
     const cv = hasCustom() ? customVals() : null;
@@ -558,21 +640,23 @@ td.farm .sub{margin-top:4px}
       $('cHint').textContent = cv.g && D.meta.gilded <= 0 ? 'You have no Gilded Stamp right now.' : (ch == null ? 'Starts at your current Hydrogen.' : '');
     }
     const q = $('fText').value.trim().toLowerCase();
-    let rows = D.stamps.map(s => prepRow(s, k));
+    let rows = D.stamps.map(s => ({ ...prepRow(s, k), ef: effFits(s, k) }));
     const total = rows.length;
     const reach = rows.filter(r => r.fill <= 1);
     const ownedOk = reach.filter(r => r.q || r.o >= r.cost);
     if (q) rows = rows.filter(r => (r.n + ' ' + r.i).toLowerCase().includes(q));
     // Priorities stay at the top, even when the storage / exalted filters would hide them; "Hide out of reach" hides them too.
     const cmp = (a,b) => { const x = a[sortK], y = b[sortK]; return (typeof x === 'string' ? x.localeCompare(y) : x - y) * sortDir; };
-    const pri = rows.filter(r => PRI.has(r.r) && !($('fReach').checked && r.fill > 1)).sort(cmp);
+    const pri = rows.filter(r => PRI.has(r.r) && !($('fReach').checked && !r.ef)).sort(cmp);
     let rest = rows.filter(r => !PRI.has(r.r));
-    if ($('fReach').checked) rest = rest.filter(r => r.fill <= 1);
+    if ($('fReach').checked) rest = rest.filter(r => r.ef);
     if ($('fOwned').checked) rest = rest.filter(r => r.q || r.o >= r.cost);
     if ($('fExalt').checked) rest = rest.filter(r => r.x);
     rest.sort(cmp);
     // Next-tier fits per scenario (current tier only).
-    const fitCount = (key) => D.stamps.filter(s => s.cs[key] <= s.cap).length;
+    const fitCount = (key) => D.stamps.filter(s => effFits(s, key)).length;
+    $('effSw').checked = effOn;
+    renderEffPlan();
     const hDay = hydroDaily();
     const scen = [['now', '0%', false], ['g', '0%', true], ['g70', hDay + '%', true, '1 day'], ['g90', '90%', true]];
     $('planSummary').innerHTML = scen.map(([key, h, g, tag]) =>
@@ -676,6 +760,7 @@ td.farm .sub{margin-top:4px}
   $('planSummary').addEventListener('click', (e) => { const btn = e.target.closest('button[data-k]'); if (btn) { sk = btn.dataset.k; renderPlan(); } });
   $('cGsImg').src = IMG.GildedStamp || ''; $('cAtomImg').src = IMG.Particle || '';
   $('meritSw').addEventListener('change', (e) => { meritOn = e.target.checked; renderAll(); });
+  $('effSw').addEventListener('change', (e) => { effOn = e.target.checked; renderPlan(); });
   $('forceMax').addEventListener('change', (e) => { forceMax = e.target.checked; renderAll(); });
   $('cGilded').addEventListener('change', (e) => { cg = e.target.checked; renderPlan(); });
   $('cHydro').addEventListener('input', (e) => {
